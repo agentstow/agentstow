@@ -277,14 +277,14 @@ pub fn adopt(env: &Env, config: &Config, r: &mut Reporter, spec: Option<&str>, a
         };
 
         let known = servers.get(name).cloned();
-        if let Some(existing) = &known {
-            if existing != &absorbed.canonical {
-                r.problem(format!(
-                    "`{name}` differs from the Store copy — merge it by hand; agentstow will not \
-                     choose which side to discard"
-                ));
-                continue;
-            }
+        if let Some(existing) = &known
+            && existing != &absorbed.canonical
+        {
+            r.problem(format!(
+                "`{name}` differs from the Store copy — merge it by hand; agentstow will not \
+                 choose which side to discard"
+            ));
+            continue;
         }
 
         // Prove the claim before making it: an adoption that would not survive
@@ -356,11 +356,11 @@ pub fn adopt(env: &Env, config: &Config, r: &mut Reporter, spec: Option<&str>, a
         warn_about_literal_secrets(name, &absorbed.canonical, r);
     }
 
-    if adopted > 0 {
-        if let Err(e) = mcp::store_write(&store_file, &servers) {
-            r.problem(e.to_string());
-            return EXIT_ERROR;
-        }
+    if adopted > 0
+        && let Err(e) = mcp::store_write(&store_file, &servers)
+    {
+        r.problem(e.to_string());
+        return EXIT_ERROR;
     }
 
     if r.problem_count() > 0 {

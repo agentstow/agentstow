@@ -169,9 +169,10 @@ fn a_broken_codex_config_is_reported_and_left_alone() {
     let out = f.run(&["sync"]);
 
     out.assert_code(1).assert_stderr_has("config.toml");
-    assert!(f
-        .contents(".codex/config.toml")
-        .contains("not [ valid toml"));
+    assert!(
+        f.contents(".codex/config.toml")
+            .contains("not [ valid toml")
+    );
     // Healthy agents are still synced.
     assert_eq!(
         f.json(".claude.json")["mcpServers"]["serena"]["command"],

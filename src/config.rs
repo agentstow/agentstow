@@ -74,7 +74,7 @@ impl Config {
             Err(e) => {
                 return Err(Error {
                     message: format!("cannot read {}: {e}", path.display()),
-                })
+                });
             }
         };
 
@@ -101,7 +101,7 @@ impl Config {
                                 "{}: targets.{name} must be true or false",
                                 path.display()
                             ),
-                        })
+                        });
                     }
                 }
             }
@@ -196,7 +196,7 @@ impl Config {
                                      expected `agents` or `tweaks`",
                                     path.display()
                                 ),
-                            })
+                            });
                         }
                     }
                 }

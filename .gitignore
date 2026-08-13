@@ -25,3 +25,6 @@ dist
 tarballs
 node_modules
 *.tgz
+
+# Tooling state, not project content
+.serena

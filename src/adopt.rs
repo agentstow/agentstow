@@ -103,11 +103,11 @@ fn move_in(
     target: &str,
     r: &mut Reporter,
 ) -> i32 {
-    if let Some(parent) = destination.parent() {
-        if let Err(e) = fs::create_dir_all(parent) {
-            r.problem(format!("cannot create {}: {e}", parent.display()));
-            return EXIT_ERROR;
-        }
+    if let Some(parent) = destination.parent()
+        && let Err(e) = fs::create_dir_all(parent)
+    {
+        r.problem(format!("cannot create {}: {e}", parent.display()));
+        return EXIT_ERROR;
     }
 
     if let Err(e) = move_path(path, destination) {

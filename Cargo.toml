@@ -1,8 +1,8 @@
 [package]
 name = "agentstow"
-version = "0.0.1"
-edition = "2021"
-rust-version = "1.85"
+version = "1.0.0"
+edition = "2024"
+rust-version = "1.97"
 license = "MIT"
 description = "GNU Stow for your AI coding agents — sync skills, instructions, MCP, commands, subagents and hooks from one canonical store"
 repository = "https://github.com/agentstow/agentstow"

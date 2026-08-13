@@ -35,7 +35,7 @@ fn edit(
         Err(e) => {
             return Err(Error {
                 message: format!("cannot read {}: {e}", path.display()),
-            })
+            });
         }
     };
 

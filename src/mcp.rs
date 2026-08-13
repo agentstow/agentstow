@@ -342,7 +342,7 @@ fn render_json_document(path: &Path, root_key: &str, items: &[&Item]) -> Result<
                     "{}: `{root_key}` is not an object — left untouched",
                     path.display()
                 ),
-            })
+            });
         }
     };
 

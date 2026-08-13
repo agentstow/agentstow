@@ -414,3 +414,28 @@ The launcher declares the platform packages as optional dependencies. Publishing
 it first leaves a window in which `npm install agentstow` resolves the launcher,
 finds no platform package, and installs a command that cannot run. The runbook
 fixes the order and says why.
+
+## 2026-08-13 — Rust edition 2024, MSRV 1.97, version 1.0.0
+
+Frank claimed the `@agentstow` npm organisation and set the version to `1.0.0`,
+which unblocked the last of ticket 14. The crate then moved to edition 2024 with
+`rust-version = "1.97"`, the current stable at the time.
+
+The MSRV is deliberately the latest rather than the oldest that compiles. Almost
+everyone gets agentstow as a prebuilt binary through npm, where the toolchain is
+irrelevant; only `cargo install` users are affected, and they are the audience
+most likely to be current. The release workflow now installs and selects stable
+explicitly, because a runner's preinstalled toolchain could otherwise be older
+than the declared edition and fail with a confusing message.
+
+Edition 2024 turned three nested `if let` blocks into clippy warnings, which
+let-chains — stabilised in the same edition — resolve directly. The suite is
+unchanged at 238 tests and clippy is clean again.
+
+## 2026-08-13 — `npm org ls` returning 403 is not evidence
+
+After the organisation was created, `npm org ls agentstow` still returned 403
+from this machine. The publishing token can publish but is not authorised to
+read organisation membership, so a 403 there says nothing either way. The
+runbook records this so a future release is not held up by a check that cannot
+answer the question — the publish itself is what settles it.

@@ -3,11 +3,13 @@
 Everything here is manual and outward-facing. CI builds and verifies; it never
 publishes. `scripts/verify-packaging.sh` runs the same checks locally.
 
-## What Frank has to claim before the first release
+## Prerequisites — both settled 2026-08-13
 
-Two things are outstanding. Both need an account action nobody else can take.
+Frank claimed the organisation and set the version to `1.0.0`. Both checks below
+now pass; they are kept because they are what to re-run if a release ever fails
+at the publish step.
 
-### 1. The `@agentstow` npm organisation — **not claimed**
+### 1. The `@agentstow` npm organisation — **claimed**
 
 The four platform packages are named `@agentstow/darwin-arm64`,
 `@agentstow/darwin-x64`, `@agentstow/linux-arm64`, `@agentstow/linux-x64`. A
@@ -22,7 +24,10 @@ $ npm org ls agentstow
 npm error 403 Forbidden — You may not perform that action with these credentials.
 ```
 
-So the scope is unclaimed, or claimed by someone else. To claim it:
+Those were the readings *before* the org existed. Note that `npm org ls` still
+returns 403 from this machine's credentials: the CLI token can publish but is
+not authorised to read organisation membership, so a 403 there is not evidence
+either way. The publish itself is what settles it. To claim the scope:
 
 1. Sign in to npmjs.com as `soulmachine` (the account that owns `agentstow`).
 2. Create an organisation named exactly `agentstow`
@@ -31,17 +36,18 @@ So the scope is unclaimed, or claimed by someone else. To claim it:
 3. Confirm it worked: `npm org ls agentstow` should list `soulmachine` as an
    owner rather than returning 403.
 
-**A passing dry run does not prove this is done.** `npm publish --dry-run`
-packs and validates locally; it does not check that the scope exists or that you
-may publish into it. The four platform packages report `ok` today *and* would
-fail a real publish. Only the checks above settle it.
+**A passing dry run never proved this.** `npm publish --dry-run` packs and
+validates locally; it does not check that the scope exists or that you may
+publish into it. The four platform packages reported `ok` while the scope was
+still unclaimed, so that signal is worth nothing here — which is why this
+section exists rather than trusting the script.
 
 If the name turns out to be taken, the alternative is unscoped names
 (`agentstow-darwin-arm64` and so on). That changes `optionalDependencies` in
 `npm/agentstow/package.json` and the naming in `scripts/build-npm.sh`, and
 nothing else — the launcher resolves whatever those names say.
 
-### 2. The published version — **`0.0.1` is already taken**
+### 2. The published version — **set to `1.0.0`**
 
 `agentstow@0.0.1` is the name-claim placeholder, published 2026-08-13 and owned
 by `soulmachine`. A release cannot reuse it:
@@ -51,14 +57,16 @@ $ npm publish --dry-run       # in npm/agentstow
 npm error You cannot publish over the previously published versions: 0.0.1.
 ```
 
-Bump `version` in `Cargo.toml` before releasing; `scripts/build-npm.sh` reads it
-and stamps every package, so the crate and all five npm packages stay in
-lockstep by construction. Choosing the number is a release decision and has
-been left alone deliberately.
+`Cargo.toml` now says `1.0.0`, and `scripts/verify-packaging.sh` confirms all
+five packages dry-run cleanly at that version. `scripts/build-npm.sh` reads the
+version from `Cargo.toml` and stamps every package, so the crate and all five
+npm packages stay in lockstep by construction — a release is a one-line bump.
 
 ## Releasing
 
-1. Bump `version` in `Cargo.toml`. Nothing else carries a version.
+1. Bump `version` in `Cargo.toml`. Nothing else carries a version. The crate
+   requires Rust 1.97 (edition 2024), so a release machine needs a current
+   toolchain.
 2. `./scripts/verify-packaging.sh` — must end with *Local packaging checks
    passed* and no blocked packages.
 3. Commit, tag `vX.Y.Z`, push the tag. The `release` workflow cross-builds all

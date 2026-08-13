@@ -288,7 +288,7 @@ pub fn apply(path: &Path, root_key: &str, items: &[&Item]) -> Result<crate::mcp:
                     "{} does not hold a JSON object — left untouched",
                     path.display()
                 ),
-            })
+            });
         }
     };
 
@@ -301,7 +301,7 @@ pub fn apply(path: &Path, root_key: &str, items: &[&Item]) -> Result<crate::mcp:
                     "{}: `{root_key}` is not an object — left untouched",
                     path.display()
                 ),
-            })
+            });
         }
     };
 
@@ -494,7 +494,7 @@ fn read_store(dir: &Path) -> Result<Vec<Hook>, Error> {
         Err(e) => {
             return Err(Error {
                 message: format!("cannot read {}: {e}", dir.display()),
-            })
+            });
         }
     };
 
@@ -551,15 +551,15 @@ fn read_hook_file(path: &Path, event: &str) -> Result<Vec<Hook>, Error> {
 
     let mut hooks = Vec::new();
     for table in array.iter() {
-        if let Some(kind) = table.get("type").and_then(|v| v.as_str()) {
-            if kind != "command" {
-                return Err(Error {
-                    message: format!(
-                        "{}: `type = \"{kind}\"` — agentstow syncs command hooks only",
-                        path.display()
-                    ),
-                });
-            }
+        if let Some(kind) = table.get("type").and_then(|v| v.as_str())
+            && kind != "command"
+        {
+            return Err(Error {
+                message: format!(
+                    "{}: `type = \"{kind}\"` — agentstow syncs command hooks only",
+                    path.display()
+                ),
+            });
         }
         let command = table
             .get("command")

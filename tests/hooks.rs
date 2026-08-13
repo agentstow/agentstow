@@ -298,9 +298,11 @@ fn status_reports_the_hooks_family() {
 
     let parsed: serde_json::Value = serde_json::from_str(&out.stdout).unwrap();
     let entries = parsed["hooks"].as_array().expect("a hooks array");
-    assert!(entries
-        .iter()
-        .any(|e| e["agent"] == "claude" && e["state"] == "missing"));
+    assert!(
+        entries
+            .iter()
+            .any(|e| e["agent"] == "claude" && e["state"] == "missing")
+    );
 }
 
 #[test]
@@ -383,10 +385,12 @@ fn a_foreign_hooks_arguments_are_never_printed() {
 
     // And it is still there afterwards.
     let hooks = hooks_at(&f, ".claude/settings.json", "hooks", "SessionStart");
-    assert!(hooks.iter().any(|h| h["command"]
-        .as_str()
-        .unwrap_or("")
-        .contains("sk-SECRET-abc")));
+    assert!(hooks.iter().any(|h| {
+        h["command"]
+            .as_str()
+            .unwrap_or("")
+            .contains("sk-SECRET-abc")
+    }));
 }
 
 #[test]

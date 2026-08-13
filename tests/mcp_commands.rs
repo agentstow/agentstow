@@ -34,9 +34,10 @@ fn an_allowlist_scopes_a_server_to_the_agents_that_want_it() {
         f.json(".claude.json")["mcpServers"]["serena"]["command"],
         "uvx"
     );
-    assert!(f
-        .contents(".codex/config.toml")
-        .contains("[mcp_servers.serena]"));
+    assert!(
+        f.contents(".codex/config.toml")
+            .contains("[mcp_servers.serena]")
+    );
     assert!(
         !f.present(".cursor/mcp.json"),
         "an unlisted agent receives nothing"
@@ -115,9 +116,10 @@ fn a_tweak_can_override_a_rendered_key() {
         f.json(".claude.json")["mcpServers"]["serena"]["command"],
         "different"
     );
-    assert!(f
-        .contents(".codex/config.toml")
-        .contains("command = \"uvx\""));
+    assert!(
+        f.contents(".codex/config.toml")
+            .contains("command = \"uvx\"")
+    );
 }
 
 #[test]
@@ -194,9 +196,11 @@ fn list_is_available_as_json() {
     let serena = servers.iter().find(|s| s["name"] == "serena").unwrap();
     assert_eq!(serena["managed"], true);
     let targets = serena["targets"].as_array().unwrap();
-    assert!(targets
-        .iter()
-        .any(|t| t["agent"] == "claude" && t["state"] == "managed"));
+    assert!(
+        targets
+            .iter()
+            .any(|t| t["agent"] == "claude" && t["state"] == "managed")
+    );
 }
 
 #[test]
@@ -225,9 +229,11 @@ fn remove_deletes_the_server_from_the_store_and_every_target() {
     );
     assert!(f.json(".claude.json")["mcpServers"].get("serena").is_none());
     assert!(!f.contents(".codex/config.toml").contains("serena"));
-    assert!(f.json(".cursor/mcp.json")["mcpServers"]
-        .get("serena")
-        .is_none());
+    assert!(
+        f.json(".cursor/mcp.json")["mcpServers"]
+            .get("serena")
+            .is_none()
+    );
 }
 
 #[test]

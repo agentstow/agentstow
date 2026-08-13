@@ -154,9 +154,10 @@ fn a_marked_file_edited_by_hand_is_restored_and_the_change_is_shown() {
     let out = f.run(&["sync"]);
 
     out.assert_clean().assert_stdout_has("ship");
-    assert!(f
-        .contents(".gemini/commands/ship.toml")
-        .contains("Ship the current branch"));
+    assert!(
+        f.contents(".gemini/commands/ship.toml")
+            .contains("Ship the current branch")
+    );
 }
 
 #[test]
@@ -211,9 +212,11 @@ fn status_reports_the_rendered_family() {
 
     let parsed: serde_json::Value = serde_json::from_str(&out.stdout).unwrap();
     let rendered = parsed["rendered"].as_array().expect("a rendered array");
-    assert!(rendered
-        .iter()
-        .any(|e| e["agent"] == "gemini" && e["state"] == "missing"));
+    assert!(
+        rendered
+            .iter()
+            .any(|e| e["agent"] == "gemini" && e["state"] == "missing")
+    );
 }
 
 #[test]

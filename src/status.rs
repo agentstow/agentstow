@@ -3,7 +3,7 @@
 //! Read-only. The exit code is the contract automation depends on: 0 clean,
 //! 2 something actionable, 1 the command could not answer.
 
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 use crate::config::Config;
 use crate::env::Env;
