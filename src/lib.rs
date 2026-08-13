@@ -20,6 +20,7 @@ pub mod instructions;
 pub mod link;
 pub mod lock;
 pub mod mcp;
+pub mod mcp_toml;
 pub mod registry;
 pub mod report;
 pub mod status;

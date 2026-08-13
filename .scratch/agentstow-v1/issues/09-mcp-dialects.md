@@ -4,11 +4,11 @@
 
 **Blocked by:** 08 — MCP tracer bullet: Claude.
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] Codex: rendered TOML tables coexist with unrelated config content byte-preserved outside the merged keys; header rename and transport collapse verified
-- [ ] opencode: command-array flattening and `environment` rename verified; the file survives a simulated plugin read-modify-write round-trip fixture
-- [ ] Gemini: transport maps to `url` vs `httpUrl` correctly per server type
-- [ ] Windsurf: remote servers carry `serverUrl`
-- [ ] Cursor and Cline: standard `mcpServers` files created/merged
-- [ ] pi and oh-my-pi configs are provably untouched by an MCP sync over all fixtures
+- [x] Codex: rendered TOML tables coexist with unrelated config content byte-preserved outside the merged keys; header rename and transport collapse verified
+- [x] opencode: command-array flattening and `environment` rename verified; the file survives a simulated plugin read-modify-write round-trip fixture
+- [x] Gemini: transport maps to `url` vs `httpUrl` correctly per server type
+- [x] Windsurf: remote servers carry `serverUrl`
+- [x] Cursor and Cline: standard `mcpServers` files created/merged
+- [x] pi and oh-my-pi configs are provably untouched by an MCP sync over all fixtures

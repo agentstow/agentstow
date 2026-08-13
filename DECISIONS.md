@@ -116,3 +116,52 @@ session can lose whichever side finishes second. Detecting this (re-stat
 immediately before `rename`, bail on change) was considered and rejected for
 v1: the spec chose a documented "don't sync mid-session" caveat, and a spurious
 failure is worse than a rare race for a command users run deliberately.
+
+## 2026-08-13 — Which dialect translations are lossy, and why that is accepted
+
+Rendering is one-way for now, but the losses matter for the eventual `mcp adopt`
+of a rendered entry:
+
+- **Codex** has one remote transport, so `http` and `sse` render identically.
+  Reading one back cannot tell which it was.
+- **OpenCode** has `local`/`remote` only, the same collapse, and flattens
+  `command` + `args` into a single array, so the boundary between the executable
+  and its first argument is gone.
+- **Windsurf** emits `serverUrl` with no type key — again, transport identity is
+  not recoverable.
+- **Gemini** is the exception: `url` means SSE and `httpUrl` means streamable
+  HTTP, so its transport round-trips.
+
+Nothing is dropped that the canonical entry declared; only the *distinction*
+between two transports is, and only where the agent itself has no way to express
+it. Keys agentstow does not model pass through verbatim to every dialect.
+
+## 2026-08-13 — TOML parse failures are named by position, never quoted
+
+`toml_edit::TomlError`'s `Display` includes the offending source line. These
+files hold resolved secrets, so formatting one leaked a credential to stderr in
+`status`, `status --json`, `sync` and `sync --dry-run` alike. Errors now carry
+line and column derived from the error's span and nothing else. Found by
+adversarial review; the same discipline the JSON path already followed.
+
+## 2026-08-13 — Codex renders drop null-valued keys
+
+TOML has no null, so the merge cannot write one. Leaving nulls in the rendered
+entry meant the written file never matched what was rendered, so Codex reported
+Drifted on every run and `status` never returned 0. Nulls are now stripped from
+the Codex render itself, which keeps the comparison symmetric with what the file
+can hold. The five JSON dialects still pass nulls through harmlessly.
+
+## 2026-08-13 — An integer TOML cannot hold is refused, not approximated
+
+TOML integers are signed 64-bit. A Store value above `i64::MAX` was being
+written as a float, which both corrupted it and left the entry permanently
+drifted. It is now an error naming the key, and nothing is written.
+
+## 2026-08-13 — The user's TOML formatting is theirs
+
+Three things the merge preserves that it did not at first: a comment written
+above a Managed server (it lives in the table's decor, not the key's), a bare
+`[mcp_servers]` header the user typed by hand, and the file's own line endings
+and byte-order mark. None of these change what the file means, which is exactly
+why silently rewriting them would be an unrequested edit.

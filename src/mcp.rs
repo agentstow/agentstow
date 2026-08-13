@@ -71,6 +71,8 @@ pub struct Item {
     pub path: PathBuf,
     /// Top-level key in that file holding the server map.
     pub root_key: &'static str,
+    /// Wire format of that file.
+    pub format: Format,
     pub state: State,
     /// What the Store says this entry should be — resolved, never printed.
     rendered: Option<Value>,
@@ -150,16 +152,9 @@ pub fn survey(env: &Env, config: &Config, store_file: &Path) -> Result<Survey, E
             continue;
         };
 
-        // Ticket 08 renders the standard JSON shape only. Writing it into a
-        // TOML file, or into an agent whose entries are shaped differently,
-        // would corrupt the config — so those Targets wait for their renderer.
-        if format != Format::Json || dialect != McpDialect::Standard {
-            continue;
-        }
-
         let path = env.in_home(file);
-        let existing = match read_agent_config(&path) {
-            Ok(value) => value,
+        let existing_servers = match read_existing(&path, root_key, format) {
+            Ok(servers) => servers,
             Err(e) => {
                 // This is a file agentstow promised never to touch. One
                 // unreadable config must not deny service to every other agent,
@@ -168,11 +163,6 @@ pub fn survey(env: &Env, config: &Config, store_file: &Path) -> Result<Survey, E
                 continue;
             }
         };
-        let existing_servers = existing
-            .get(root_key)
-            .and_then(Value::as_object)
-            .cloned()
-            .unwrap_or_default();
 
         for (name, spec) in &servers {
             let rendered = render(name, spec, dialect, env)?;
@@ -191,6 +181,7 @@ pub fn survey(env: &Env, config: &Config, store_file: &Path) -> Result<Survey, E
                 name: name.clone(),
                 path: path.clone(),
                 root_key,
+                format,
                 state,
                 rendered: Some(rendered),
                 changed_keys,
@@ -207,6 +198,7 @@ pub fn survey(env: &Env, config: &Config, store_file: &Path) -> Result<Survey, E
                 name: name.clone(),
                 path: path.clone(),
                 root_key,
+                format,
                 state: State::Foreign,
                 rendered: None,
                 changed_keys: Vec::new(),
@@ -230,7 +222,63 @@ fn mentions_env_ref(spec: &Value) -> bool {
 ///
 /// Grouping by file matters: an agent may receive more than one family in the
 /// same file, and a write per item would clobber the previous one.
-pub fn apply(path: &Path, root_key: &str, items: &[&Item]) -> Result<Report, Error> {
+pub fn apply(
+    path: &Path,
+    root_key: &str,
+    format: Format,
+    items: &[&Item],
+) -> Result<Report, Error> {
+    let body = match format {
+        Format::Json => render_json_document(path, root_key, items)?,
+        Format::Toml => render_toml_document(path, root_key, items)?,
+    };
+
+    let written = crate::write::atomic(path, body.as_bytes()).map_err(|e| Error {
+        message: format!("cannot write {}: {e}", path.display()),
+    })?;
+
+    Ok(Report {
+        path: written.path,
+        exposed: crate::write::is_exposed(written.mode)
+            && items.iter().any(|item| item.holds_secret),
+        mode: written.mode,
+    })
+}
+
+/// Merge the Managed entries into a TOML config, preserving everything else.
+fn render_toml_document(path: &Path, root_key: &str, items: &[&Item]) -> Result<String, Error> {
+    let text = read_text(path)?;
+    let mut entries = Map::new();
+    for item in items {
+        if let Some(rendered) = &item.rendered {
+            entries.insert(item.name.clone(), rendered.clone());
+        }
+    }
+
+    // toml_edit normalises both of these away; the user's file gets them back.
+    let had_bom = text.starts_with('\u{feff}');
+    let had_crlf = text.contains("\r\n");
+    let body = text.strip_prefix('\u{feff}').unwrap_or(&text);
+
+    let merged =
+        crate::mcp_toml::merge_section(body, root_key, &entries).map_err(|detail| Error {
+            message: format!("{}: {detail} — left untouched", path.display()),
+        })?;
+
+    let merged = if had_crlf {
+        merged.replace('\n', "\r\n")
+    } else {
+        merged
+    };
+    Ok(if had_bom {
+        format!("\u{feff}{merged}")
+    } else {
+        merged
+    })
+}
+
+/// Merge the Managed entries into a JSON config, preserving everything else.
+fn render_json_document(path: &Path, root_key: &str, items: &[&Item]) -> Result<String, Error> {
     let mut document = read_agent_config(path)?;
 
     // An existing document that is not an object is somebody else's data in a
@@ -272,19 +320,8 @@ pub fn apply(path: &Path, root_key: &str, items: &[&Item]) -> Result<Report, Err
 
     root.insert(root_key.to_string(), Value::Object(servers));
 
-    let body = serde_json::to_string_pretty(&document).map_err(|e| Error {
+    serde_json::to_string_pretty(&document).map_err(|e| Error {
         message: format!("cannot serialise {}: {e}", path.display()),
-    })?;
-
-    let written = crate::write::atomic(path, body.as_bytes()).map_err(|e| Error {
-        message: format!("cannot write {}: {e}", path.display()),
-    })?;
-
-    Ok(Report {
-        path: written.path,
-        exposed: crate::write::is_exposed(written.mode)
-            && items.iter().any(|item| item.holds_secret),
-        mode: written.mode,
     })
 }
 
@@ -335,6 +372,44 @@ fn read_store(path: &Path) -> Result<BTreeMap<String, Value>, Error> {
         .collect())
 }
 
+/// The servers already in an agent's config, whatever format it is written in.
+///
+/// TOML is normalised to JSON here purely so the survey can compare entries
+/// with one set of rules; the JSON form is never written back.
+fn read_existing(path: &Path, root_key: &str, format: Format) -> Result<Map<String, Value>, Error> {
+    match format {
+        Format::Json => match read_agent_config(path)?.get(root_key) {
+            None => Ok(Map::new()),
+            Some(Value::Object(servers)) => Ok(servers.clone()),
+            // Treating this as "no servers" would report every Store server as
+            // missing forever, while the write refuses every time.
+            Some(_) => Err(Error {
+                message: format!(
+                    "{}: `{root_key}` is not an object — left untouched",
+                    path.display()
+                ),
+            }),
+        },
+        Format::Toml => {
+            let text = read_text(path)?;
+            crate::mcp_toml::read_section(&text, root_key).map_err(|detail| Error {
+                message: format!("{}: {detail} — left untouched", path.display()),
+            })
+        }
+    }
+}
+
+/// A file's text, treating "not there yet" as empty.
+fn read_text(path: &Path) -> Result<String, Error> {
+    match std::fs::read_to_string(path) {
+        Ok(text) => Ok(text),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(String::new()),
+        Err(e) => Err(Error {
+            message: format!("cannot read {}: {e}", path.display()),
+        }),
+    }
+}
+
 /// Parse an agent's config, treating "not there yet" as an empty document.
 fn read_agent_config(path: &Path) -> Result<Value, Error> {
     match std::fs::read_to_string(path) {
@@ -356,16 +431,175 @@ fn read_agent_config(path: &Path) -> Result<Value, Error> {
     }
 }
 
+/// How a server talks, whether or not the Store said so outright.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Transport {
+    Stdio,
+    Http,
+    Sse,
+}
+
+/// An absent `type` is inferred the way every agent infers it: a server with a
+/// URL and no command is remote.
+fn transport(spec: &Map<String, Value>) -> Transport {
+    match spec.get("type").and_then(Value::as_str) {
+        Some("http") => Transport::Http,
+        Some("sse") => Transport::Sse,
+        Some("stdio") => Transport::Stdio,
+        _ if spec.contains_key("url") && !spec.contains_key("command") => Transport::Http,
+        _ => Transport::Stdio,
+    }
+}
+
+/// Keys every dialect handles itself, and so must not pass through verbatim.
+const TRANSLATED: &[&str] = &["type", "command", "args", "env", "url", "headers"];
+
+/// Copy the keys agentstow does not model, so an agent-specific setting the
+/// user wrote in the Store still reaches its agent.
+fn passthrough(spec: &Map<String, Value>, out: &mut Map<String, Value>) {
+    for (key, value) in spec {
+        if !TRANSLATED.contains(&key.as_str()) {
+            out.insert(key.clone(), value.clone());
+        }
+    }
+}
+
 /// Render one Store server into an agent's native shape, resolving references.
 fn render(name: &str, spec: &Value, dialect: McpDialect, env: &Env) -> Result<Value, Error> {
     let resolved = resolve_refs(name, spec, env)?;
-    Ok(match dialect {
+    let Some(fields) = resolved.as_object() else {
+        return Ok(resolved);
+    };
+    Ok(Value::Object(match dialect {
         // The Store is already in this shape, so there is nothing to translate.
-        McpDialect::Standard => resolved,
-        // Ticket 09 gives the other dialects their translations; until then a
-        // faithful passthrough is better than a wrong guess.
-        _ => resolved,
-    })
+        McpDialect::Standard => return Ok(resolved),
+        McpDialect::Codex => {
+            // The TOML merge drops null-valued keys because TOML has no null.
+            // Dropping them from the rendered entry too keeps the comparison
+            // symmetric with what the file can actually hold — otherwise the
+            // entry reads back different every time and never converges.
+            let mut out = Value::Object(render_codex(fields));
+            strip_nulls(&mut out);
+            return Ok(out);
+        }
+        McpDialect::Opencode => render_opencode(fields),
+        McpDialect::Gemini => render_gemini(fields),
+        McpDialect::Windsurf => render_windsurf(fields),
+    }))
+}
+
+/// Codex has one remote transport and no `type` key, and calls headers
+/// `http_headers`.
+fn render_codex(spec: &Map<String, Value>) -> Map<String, Value> {
+    let mut out = Map::new();
+    match transport(spec) {
+        Transport::Stdio => {
+            copy(spec, "command", &mut out);
+            copy(spec, "args", &mut out);
+            copy(spec, "env", &mut out);
+        }
+        _ => {
+            copy(spec, "url", &mut out);
+            if let Some(headers) = spec.get("headers") {
+                out.insert("http_headers".into(), headers.clone());
+            }
+        }
+    }
+    passthrough(spec, &mut out);
+    out
+}
+
+/// OpenCode splits servers into local and remote, takes the executable and its
+/// arguments as one array, and calls the environment `environment`.
+fn render_opencode(spec: &Map<String, Value>) -> Map<String, Value> {
+    let mut out = Map::new();
+    match transport(spec) {
+        Transport::Stdio => {
+            out.insert("type".into(), Value::from("local"));
+            let mut command = Vec::new();
+            if let Some(program) = spec.get("command").and_then(Value::as_str) {
+                command.push(Value::from(program));
+            }
+            if let Some(args) = spec.get("args").and_then(Value::as_array) {
+                command.extend(args.iter().cloned());
+            }
+            if !command.is_empty() {
+                out.insert("command".into(), Value::Array(command));
+            }
+            if let Some(env) = spec.get("env") {
+                out.insert("environment".into(), env.clone());
+            }
+        }
+        _ => {
+            out.insert("type".into(), Value::from("remote"));
+            copy(spec, "url", &mut out);
+            copy(spec, "headers", &mut out);
+        }
+    }
+    passthrough(spec, &mut out);
+    out
+}
+
+/// Gemini encodes the remote transport in the key name: `url` is SSE,
+/// `httpUrl` is streamable HTTP.
+fn render_gemini(spec: &Map<String, Value>) -> Map<String, Value> {
+    let mut out = Map::new();
+    match transport(spec) {
+        Transport::Stdio => {
+            copy(spec, "command", &mut out);
+            copy(spec, "args", &mut out);
+            copy(spec, "env", &mut out);
+        }
+        remote => {
+            let key = if remote == Transport::Sse {
+                "url"
+            } else {
+                "httpUrl"
+            };
+            if let Some(url) = spec.get("url") {
+                out.insert(key.into(), url.clone());
+            }
+            copy(spec, "headers", &mut out);
+        }
+    }
+    passthrough(spec, &mut out);
+    out
+}
+
+/// Windsurf calls the remote URL `serverUrl` and has no `type` key.
+fn render_windsurf(spec: &Map<String, Value>) -> Map<String, Value> {
+    let mut out = Map::new();
+    match transport(spec) {
+        Transport::Stdio => {
+            copy(spec, "command", &mut out);
+            copy(spec, "args", &mut out);
+            copy(spec, "env", &mut out);
+        }
+        _ => {
+            if let Some(url) = spec.get("url") {
+                out.insert("serverUrl".into(), url.clone());
+            }
+            copy(spec, "headers", &mut out);
+        }
+    }
+    passthrough(spec, &mut out);
+    out
+}
+
+/// Remove null-valued keys, recursively.
+fn strip_nulls(value: &mut Value) {
+    if let Value::Object(fields) = value {
+        fields.retain(|_, v| !v.is_null());
+        for nested in fields.values_mut() {
+            strip_nulls(nested);
+        }
+    }
+}
+
+fn copy(spec: &Map<String, Value>, key: &str, out: &mut Map<String, Value>) {
+    if let Some(value) = spec.get(key) {
+        out.insert(key.to_string(), value.clone());
+    }
 }
 
 /// Replace every `${env:VAR}` in every string with its value.

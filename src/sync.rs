@@ -70,8 +70,11 @@ pub fn run(env: &Env, config: &Config, r: &mut Reporter, dry_run: bool) -> i32 {
         }
     }
 
-    if changes == 0 {
+    if changes == 0 && r.problem_count() == 0 {
         r.line("Everything is up to date.");
+    } else if changes == 0 {
+        r.blank();
+        r.line("No changes were made — see the errors above.");
     } else {
         r.blank();
         let noun = if changes == 1 { "change" } else { "changes" };
@@ -145,7 +148,7 @@ fn sync_mcp(
     let mut written = 0usize;
     for (path, group) in &by_file {
         let root_key = group[0].root_key;
-        match mcp::apply(path, root_key, group) {
+        match mcp::apply(path, root_key, group[0].format, group) {
             Ok(report) => {
                 written += group.len();
                 if report.exposed {

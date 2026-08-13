@@ -471,9 +471,9 @@ fn a_held_lock_stops_the_write() {
 }
 
 #[test]
-fn an_agent_whose_config_is_not_json_is_left_for_its_own_ticket() {
-    // Codex keeps MCP in TOML. Writing the standard JSON shape into it would
-    // corrupt a file that also holds the user's model settings.
+fn a_toml_agent_is_merged_without_losing_the_users_settings() {
+    // Codex keeps MCP in the same file as its model settings. Writing the
+    // standard JSON shape here would corrupt it, so it gets a TOML merge.
     let f = machine();
     f.agent(".codex");
     f.store_mcp(one_server());
@@ -482,15 +482,16 @@ fn an_agent_whose_config_is_not_json_is_left_for_its_own_ticket() {
     let out = f.run(&["sync"]);
 
     out.assert_clean();
-    assert_eq!(
-        f.contents(".codex/config.toml"),
-        "model = \"gpt-5\"\n",
-        "a TOML config must be untouched until it has a renderer"
+    let toml = f.contents(".codex/config.toml");
+    assert!(
+        toml.contains("model = \"gpt-5\""),
+        "the user's own settings survive:\n{toml}"
     );
+    assert!(toml.contains("[mcp_servers.serena]"), "got:\n{toml}");
     assert_eq!(
         f.json(".claude.json")["mcpServers"]["serena"]["command"],
         "uvx",
-        "and the agents that can be synced still are"
+        "and the JSON agents are synced in the same run"
     );
 }
 
@@ -502,7 +503,16 @@ fn a_fresh_codex_never_receives_a_json_document() {
 
     f.run(&["sync"]).assert_clean();
 
-    assert!(!f.present(".codex/config.toml"));
+    let toml = f.contents(".codex/config.toml");
+    assert!(
+        !toml.trim_start().starts_with('{'),
+        "Codex must get TOML, never a JSON document:\n{toml}"
+    );
+    assert!(toml.contains("[mcp_servers.serena]"), "got:\n{toml}");
+    // And it is genuinely parseable as TOML by a second run.
+    f.run(&["sync"])
+        .assert_clean()
+        .assert_stdout_has("up to date");
 }
 
 #[test]
