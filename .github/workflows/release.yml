@@ -1,0 +1,118 @@
+name: release
+
+# Cross-builds every supported target, assembles the npm packages, and proves
+# they install offline. Publishing is a separate, manual step: see
+# docs/release-runbook.md. Nothing here pushes to a registry.
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - "npm/**"
+      - "scripts/**"
+      - ".github/workflows/release.yml"
+      - "Cargo.toml"
+
+jobs:
+  build:
+    name: build ${{ matrix.target }}
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: darwin-arm64
+            triple: aarch64-apple-darwin
+            runner: macos-14
+          - target: darwin-x64
+            triple: x86_64-apple-darwin
+            runner: macos-13
+          - target: linux-x64
+            triple: x86_64-unknown-linux-gnu
+            runner: ubuntu-latest
+          - target: linux-arm64
+            triple: aarch64-unknown-linux-gnu
+            runner: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@v4
+      - name: install the rust toolchain
+        run: |
+          rustup toolchain install stable --profile minimal
+          rustup target add ${{ matrix.triple }}
+      - name: build
+        run: cargo build --release --locked --target ${{ matrix.triple }}
+      - name: the binary runs
+        run: ./target/${{ matrix.triple }}/release/agentstow --version
+      - uses: actions/upload-artifact@v4
+        with:
+          name: binary-${{ matrix.target }}
+          path: target/${{ matrix.triple }}/release/agentstow
+          if-no-files-found: error
+
+  package:
+    name: assemble and verify
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+      - name: put each binary where the assembler expects it
+        run: |
+          set -euo pipefail
+          declare -A TRIPLE=(
+            [darwin-arm64]=aarch64-apple-darwin
+            [darwin-x64]=x86_64-apple-darwin
+            [linux-x64]=x86_64-unknown-linux-gnu
+            [linux-arm64]=aarch64-unknown-linux-gnu
+          )
+          for target in "${!TRIPLE[@]}"; do
+            dir="target/${TRIPLE[$target]}/release"
+            mkdir -p "$dir"
+            cp "artifacts/binary-$target/agentstow" "$dir/agentstow"
+            chmod +x "$dir/agentstow"
+          done
+      - name: assemble the npm packages
+        run: scripts/build-npm.sh dist
+      - name: every package is present
+        run: |
+          set -euo pipefail
+          for expected in agentstow darwin-arm64 darwin-x64 linux-arm64 linux-x64; do
+            test -f "dist/$expected/package.json" || { echo "missing dist/$expected"; exit 1; }
+          done
+          test -x dist/linux-x64/bin/agentstow
+      - name: no install hooks
+        run: |
+          if grep -RlE '"(postinstall|preinstall|install)"' dist; then
+            echo "packages must not run code on install"; exit 1
+          fi
+      - name: pack, install offline, and run
+        run: |
+          set -euo pipefail
+          mkdir -p tarballs consumer
+          for dir in dist/*; do (cd "$dir" && npm pack --pack-destination "$GITHUB_WORKSPACE/tarballs"); done
+          cd consumer && npm init -y >/dev/null
+          npm install --offline --no-audit --no-fund \
+            "$GITHUB_WORKSPACE"/tarballs/agentstow-linux-x64-*.tgz \
+            "$GITHUB_WORKSPACE"/tarballs/agentstow-[0-9]*.tgz
+          ./node_modules/.bin/agentstow --version
+      - name: dry-run publish
+        run: for dir in dist/*; do (cd "$dir" && npm publish --dry-run); done
+      - uses: actions/upload-artifact@v4
+        with:
+          name: npm-packages
+          path: dist
+
+  crate:
+    name: cargo package
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: rustup toolchain install stable --profile minimal
+      - run: cargo publish --dry-run --locked

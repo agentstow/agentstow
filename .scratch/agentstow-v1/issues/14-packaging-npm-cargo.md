@@ -4,10 +4,11 @@
 
 **Blocked by:** 01 — Crate scaffold, test seam, target registry, `doctor`.
 
-**Status:** ready-for-agent
+**Status:** ready-for-human — the pipeline is built and verified; publishing is blocked on claiming the `@agentstow` npm org (see `docs/release-runbook.md`)
 
-- [ ] `cargo install --path .` yields a working `agentstow` binary
-- [ ] The launcher package resolves and executes the correct platform sub-package binary on macOS and Linux
-- [ ] No postinstall network access: a fully offline `npm install` from a local registry fixture succeeds
-- [ ] CI produces all four platform artifacts and a dry-run npm publish of the package set passes
+- [x] `cargo install --path .` yields a working `agentstow` binary
+- [x] The launcher package resolves and executes the correct platform sub-package binary on macOS and Linux
+- [x] No postinstall network access: a fully offline `npm install` from a local registry fixture succeeds
+- [x] CI produces all four platform artifacts and a dry-run npm publish of the package set passes
 - [ ] The npm org scope for platform packages is claimed and documented in the release runbook
+      (documented in `docs/release-runbook.md`; **claiming it needs Frank** — `npm org ls agentstow` returns 403 today)

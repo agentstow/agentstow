@@ -372,3 +372,45 @@ three hand-made `plannotator-*` skill directories out of the 160 entries in
 Long lists are capped at eight entries with a count of the remainder — a first
 run on a populated machine should be readable, and the full picture is what
 `status` is for.
+
+## 2026-08-13 — Packaging is verified by a script, not at the CLI seam
+
+Every other family is tested by driving `agentstow::run` against a fixture tree.
+Packaging cannot be: the thing under test is what npm and cargo do with the
+built artefact, which lives outside the process. `scripts/verify-packaging.sh`
+is therefore its test — it builds, assembles, packs, installs offline from local
+tarballs, runs the installed launcher, checks exit-code propagation and the
+no-platform-package message, and dry-runs every publish.
+
+One packaging fact *is* testable at the seam and now is: `--version` must report
+the crate version, because `build-npm.sh` reads that same version out of
+`Cargo.toml` and stamps it onto all five npm packages.
+
+## 2026-08-13 — A dry-run publish does not prove the scope is claimable
+
+`npm publish --dry-run` on `@agentstow/darwin-arm64` reports `ok` today, even
+though `npm view @agentstow/darwin-arm64` returns 404 and `npm org ls agentstow`
+returns 403. The dry run packs and validates locally; it never asks whether the
+scope exists or whether you may publish into it. Treating a green dry run as
+release-readiness would fail at the worst moment, so the runbook says outright
+which checks actually settle it.
+
+The verification script classifies registry outcomes rather than conflating
+them: "version already published" and "scope not claimed" are expected states
+before the first release and are reported with a pointer to the runbook, while
+any other failure is still a hard error.
+
+## 2026-08-13 — The published version is left at 0.0.1 deliberately
+
+`agentstow@0.0.1` is the name-claim placeholder and cannot be republished, so a
+real release must bump it. Which number that is — 0.0.2, 0.1.0, 1.0.0 — says
+something about the project's maturity that is Frank's to say, not a detail to
+settle in passing. `build-npm.sh` reads the version from `Cargo.toml` and stamps
+it everywhere, so bumping one line is the whole change.
+
+## 2026-08-13 — Platform packages are published before the launcher
+
+The launcher declares the platform packages as optional dependencies. Publishing
+it first leaves a window in which `npm install agentstow` resolves the launcher,
+finds no platform package, and installs a command that cannot run. The runbook
+fixes the order and says why.

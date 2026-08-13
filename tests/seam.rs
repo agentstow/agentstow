@@ -117,3 +117,17 @@ fn an_unknown_command_is_a_diagnostic() {
     assert!(!out.stderr.is_empty(), "usage errors belong on stderr");
     assert!(out.stdout.is_empty(), "a failed parse produces no results");
 }
+
+#[test]
+fn the_binary_reports_the_crate_version() {
+    // scripts/build-npm.sh reads this version out of Cargo.toml and stamps it
+    // onto all five npm packages. If the binary disagreed, a release would ship
+    // packages whose name promises one version and whose contents are another.
+    let f = Fixture::new();
+
+    let out = f.run(&["--version"]);
+
+    out.assert_clean()
+        .assert_stderr_empty()
+        .assert_stdout_has(env!("CARGO_PKG_VERSION"));
+}

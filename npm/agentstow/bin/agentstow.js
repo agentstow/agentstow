@@ -1,0 +1,48 @@
+#!/usr/bin/env node
+"use strict";
+
+// Launcher for the prebuilt agentstow binary.
+//
+// The real executable ships in one platform package per target, declared as
+// optional dependencies. npm installs only the one matching this machine
+// (each declares `os` and `cpu`), so there is nothing to download here and no
+// postinstall step — an install works offline and in a sandboxed CI.
+
+const { spawnSync } = require("node:child_process");
+
+const PACKAGE = `@agentstow/${process.platform}-${process.arch}`;
+
+function binaryPath() {
+  try {
+    return require.resolve(`${PACKAGE}/bin/agentstow`);
+  } catch {
+    return null;
+  }
+}
+
+const binary = binaryPath();
+
+if (!binary) {
+  process.stderr.write(
+    `agentstow: no prebuilt binary for ${process.platform}-${process.arch}.\n` +
+      `Expected the optional dependency ${PACKAGE}.\n` +
+      `If your platform is unsupported, build from source: cargo install agentstow\n` +
+      `If the install skipped optional dependencies, reinstall without --no-optional.\n`
+  );
+  process.exit(1);
+}
+
+const result = spawnSync(binary, process.argv.slice(2), { stdio: "inherit" });
+
+if (result.error) {
+  process.stderr.write(`agentstow: cannot run ${binary}: ${result.error.message}\n`);
+  process.exit(1);
+}
+
+// A killed child reports a signal rather than a code; mirror the shell's
+// 128+signal convention so callers still see a non-zero exit.
+if (result.signal) {
+  process.exit(1);
+}
+
+process.exit(result.status === null ? 1 : result.status);

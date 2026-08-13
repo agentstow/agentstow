@@ -1,0 +1,39 @@
+{
+  "name": "agentstow",
+  "version": "0.0.1",
+  "description": "GNU Stow for your AI coding agents — sync skills, instructions, MCP servers, commands, subagents and hooks from one canonical store",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/agentstow/agentstow.git"
+  },
+  "homepage": "https://github.com/agentstow/agentstow",
+  "keywords": [
+    "ai-agents",
+    "claude-code",
+    "codex",
+    "opencode",
+    "skills",
+    "agents-md",
+    "mcp",
+    "dotfiles",
+    "symlink",
+    "stow"
+  ],
+  "bin": {
+    "agentstow": "bin/agentstow.js"
+  },
+  "files": [
+    "bin/agentstow.js",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "optionalDependencies": {
+    "@agentstow/darwin-arm64": "0.0.1",
+    "@agentstow/darwin-x64": "0.0.1",
+    "@agentstow/linux-arm64": "0.0.1",
+    "@agentstow/linux-x64": "0.0.1"
+  }
+}
