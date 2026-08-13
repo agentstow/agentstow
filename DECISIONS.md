@@ -331,3 +331,27 @@ hooks as Foreign. `doctor` reports the family as `absent` instead, and
 `doctor` now also warns about non-`.toml` files in `hooks/`, which the family
 would otherwise skip in silence — the exact failure the Store hygiene scan was
 introduced to end.
+
+## 2026-08-13 — The Marker is what makes pruning safe
+
+Rendered files are the only family agentstow deletes without being asked by
+name. That is sound precisely because the Marker proves authorship: a file
+carrying it was generated here, so removing it when its Store entry goes is
+returning the machine to a state agentstow created. A file without one was
+written by somebody else and is never touched — verified against the two real
+`plannotator-*.toml` commands on this machine, which survive a sync untouched.
+
+This is not in tension with the MCP rule against markers (ADR-0003). There a
+marker would have had to live inside data the agent parses as configuration;
+here it is a comment in a file agentstow generates wholesale, invisible to the
+agent reading it.
+
+## 2026-08-13 — Rendered prompts use escaped strings, not triple quotes
+
+Gemini's own command files use `"""..."""` for multi-line prompts. agentstow
+emits an escaped basic string instead, which is valid TOML carrying identical
+content — verified by round-tripping a body containing `"""`, backslashes and
+non-ASCII. Matching Gemini's cosmetic style would mean hand-rolling the escaping
+of triple quotes inside triple quotes, which is exactly the kind of thing that
+produces an unparseable file for one unlucky user. The Marker already tells a
+reader to edit the Store rather than the file.

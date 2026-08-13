@@ -10,6 +10,7 @@ use crate::instructions;
 use crate::link::{self, Item};
 use crate::lock;
 use crate::mcp;
+use crate::render;
 use crate::report::Reporter;
 use crate::store::{self, Store};
 use crate::target;
@@ -71,6 +72,14 @@ pub fn run(env: &Env, config: &Config, r: &mut Reporter, dry_run: bool) -> i32 {
         }
     }
 
+    match sync_rendered(env, config, &store, r, dry_run) {
+        Ok(n) => changes += n,
+        Err(e) => {
+            r.problem(e.to_string());
+            return EXIT_ERROR;
+        }
+    }
+
     // Hooks run after MCP because Gemini keeps both in one settings file, and
     // each family re-reads it before merging.
     match sync_hooks(env, config, &store, r, dry_run) {
@@ -98,6 +107,53 @@ pub fn run(env: &Env, config: &Config, r: &mut Reporter, dry_run: bool) -> i32 {
     } else {
         EXIT_CLEAN
     }
+}
+
+/// The rendered family: whole files generated for agents that cannot take a
+/// symlink, each carrying the Marker that makes it ours to replace.
+fn sync_rendered(
+    env: &Env,
+    config: &Config,
+    store: &Store,
+    r: &mut Reporter,
+    dry_run: bool,
+) -> Result<usize, render::Error> {
+    let items = render::survey(env, config, store)?;
+    let noteworthy: Vec<&render::Item> = items
+        .iter()
+        .filter(|i| i.state != render::State::Managed)
+        .collect();
+    if noteworthy.is_empty() {
+        return Ok(0);
+    }
+
+    r.line("rendered commands");
+    for item in &noteworthy {
+        r.line(format!(
+            "  {:<10} {} → {} — {}",
+            item.state.label(),
+            item.name,
+            item.target,
+            item.state.note()
+        ));
+    }
+
+    let changing: Vec<&&render::Item> = noteworthy
+        .iter()
+        .filter(|i| i.state.needs_change())
+        .collect();
+    if changing.is_empty() || dry_run {
+        return Ok(changing.len());
+    }
+
+    let mut written = 0usize;
+    for item in &changing {
+        match render::apply(item) {
+            Ok(()) => written += 1,
+            Err(e) => r.problem(e.to_string()),
+        }
+    }
+    Ok(written)
 }
 
 /// The hooks family: command-hooks merged into each agent's hook arrays.

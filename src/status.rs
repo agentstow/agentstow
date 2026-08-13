@@ -12,6 +12,7 @@ use crate::hooks;
 use crate::instructions;
 use crate::link::{self, Item, State};
 use crate::mcp;
+use crate::render;
 use crate::report::Reporter;
 use crate::store::{self, Store};
 use crate::target;
@@ -85,6 +86,14 @@ pub fn run(env: &Env, config: &Config, r: &mut Reporter, as_json: bool) -> i32 {
     }
     let hook_items = hook_survey.items;
 
+    let rendered_items = match render::survey(env, config, &store) {
+        Ok(items) => items,
+        Err(e) => {
+            r.problem(e.to_string());
+            return EXIT_ERROR;
+        }
+    };
+
     let actionable: usize = targets
         .iter()
         .flat_map(|t| &t.items)
@@ -95,7 +104,11 @@ pub fn run(env: &Env, config: &Config, r: &mut Reporter, as_json: bool) -> i32 {
             .filter(|i| i.state.actionable())
             .count()
         + mcp_items.iter().filter(|i| i.state.actionable()).count()
-        + hook_items.iter().filter(|i| i.state.actionable()).count();
+        + hook_items.iter().filter(|i| i.state.actionable()).count()
+        + rendered_items
+            .iter()
+            .filter(|i| i.state.actionable())
+            .count();
 
     if as_json {
         r.json(&as_value(
@@ -104,6 +117,7 @@ pub fn run(env: &Env, config: &Config, r: &mut Reporter, as_json: bool) -> i32 {
             &instruction_items,
             &mcp_items,
             &hook_items,
+            &rendered_items,
             actionable,
         ));
     } else {
@@ -112,6 +126,7 @@ pub fn run(env: &Env, config: &Config, r: &mut Reporter, as_json: bool) -> i32 {
             &instruction_items,
             &mcp_items,
             &hook_items,
+            &rendered_items,
             actionable,
             r,
         );
@@ -131,6 +146,7 @@ fn human(
     instruction_items: &[instructions::Item],
     mcp_items: &[mcp::Item],
     hook_items: &[hooks::Item],
+    rendered_items: &[render::Item],
     actionable: usize,
     r: &mut Reporter,
 ) {
@@ -206,6 +222,19 @@ fn human(
         }
     }
 
+    if !rendered_items.is_empty() {
+        r.line("rendered commands");
+        for item in rendered_items {
+            let note = item.state.note();
+            let name = format!("{} → {}", item.name, item.target);
+            if note.is_empty() {
+                r.line(format!("  {:<17} {name}", item.state.label()));
+            } else {
+                r.line(format!("  {:<17} {name} — {note}", item.state.label()));
+            }
+        }
+    }
+
     r.blank();
     if actionable == 0 {
         r.line("Everything is in sync.");
@@ -222,6 +251,7 @@ fn as_value(
     instruction_items: &[instructions::Item],
     mcp_items: &[mcp::Item],
     hook_items: &[hooks::Item],
+    rendered_items: &[render::Item],
     actionable: usize,
 ) -> Value {
     let targets: Vec<Value> = targets
@@ -283,11 +313,24 @@ fn as_value(
         })
         .collect();
 
+    let rendered: Vec<Value> = rendered_items
+        .iter()
+        .map(|i| {
+            json!({
+                "agent": i.target,
+                "name": i.name,
+                "state": i.state.label(),
+                "actionable": i.state.actionable(),
+            })
+        })
+        .collect();
+
     json!({
         "store": store.root().display().to_string(),
         "instructions": instructions,
         "mcp": mcp,
         "hooks": hooks,
+        "rendered": rendered,
         "clean": actionable == 0,
         "actionable": actionable,
         "targets": targets,

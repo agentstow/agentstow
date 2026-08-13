@@ -4,10 +4,10 @@
 
 **Blocked by:** 06 — Commands + subagents families; 08 — MCP tracer bullet: Claude.
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] A Store command produces a Gemini TOML file with the Marker and faithful name/description/prompt mapping
-- [ ] Editing the Store command re-renders the file; deleting the Store command prunes the Marked file
-- [ ] A hand-authored (unmarked) file at the colliding path is untouched and reported
-- [ ] A Marked file hand-edited out-of-band is restored to the render (overwrite courtesy: change shown)
-- [ ] Sync remains a no-op when Store and renders already agree
+- [x] A Store command produces a Gemini TOML file with the Marker and faithful name/description/prompt mapping
+- [x] Editing the Store command re-renders the file; deleting the Store command prunes the Marked file
+- [x] A hand-authored (unmarked) file at the colliding path is untouched and reported
+- [x] A Marked file hand-edited out-of-band is restored to the render (overwrite courtesy: change shown)
+- [x] Sync remains a no-op when Store and renders already agree

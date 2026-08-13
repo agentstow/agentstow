@@ -25,6 +25,7 @@ pub mod mcp;
 pub mod mcp_cmd;
 pub mod mcp_toml;
 pub mod registry;
+pub mod render;
 pub mod report;
 pub mod status;
 pub mod store;
