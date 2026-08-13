@@ -84,8 +84,21 @@ npm packages stay in lockstep by construction — a release is a one-line bump.
    dependencies; publishing it first leaves a window where installing it
    resolves nothing and the binary is missing.
    `--access public` is required: scoped packages default to restricted.
-6. Verify from a clean directory:
+6. **Wait for propagation before verifying.** A package name that is new to the
+   registry is not readable the instant `npm publish` returns, even though the
+   upload succeeded. On the 1.0.0 release all four `@agentstow/*` packages
+   returned `PUT 200` and then 404 on `GET` for several minutes, appearing one
+   at a time; the `agentstow` launcher was visible immediately only because that
+   name already existed. A 404 straight after publishing is not a failed
+   publish — check the npm debug log for `PUT 200` before assuming anything is
+   wrong, and re-check the registry rather than republishing.
    ```sh
+   until curl -sf -o /dev/null https://registry.npmjs.org/@agentstow%2Fdarwin-arm64; do sleep 15; done
+   ```
+7. Verify from a clean directory, with the cache cleared so a stale packument
+   cannot mask the result:
+   ```sh
+   npm cache clean --force
    npm install --no-save agentstow && ./node_modules/.bin/agentstow --version
    ```
 

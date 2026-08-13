@@ -6,9 +6,9 @@ Deployed as the Worker `agentstow-site` (Workers Static Assets). The apex domain
 certificate are attached by the `custom_domain` route in `wrangler.toml`; no DNS record is
 created by hand.
 
-- [ ] First deploy — `cd site && npx wrangler deploy`
-- [ ] `www.agentstow.dev` → 301 to the apex
-- [ ] `agentstow.com`, `agentstow.org` → 301 to the apex
+- [x] First deploy — live at <https://agentstow.dev>
+- [x] `www.agentstow.dev` → 301 to the apex
+- [x] `agentstow.com`, `agentstow.org` (and their `www`) → 301 to the apex
 - [ ] Workers Builds — auto-deploy on push to `main`
 
 ## Deploying
@@ -32,10 +32,23 @@ An `AAAA` record pointing at `100::` (the discard prefix), proxied, is the conve
 target for a redirect-only hostname — that is what Cloudflare's own custom-domain
 attachment produces.
 
-> The API token on this machine can *read* DNS records and rulesets on the zone (both
-> return 200). Write scope is untested. If a write returns 403, do it in the dashboard and
-> record that here rather than fighting the token — this is what happened on
-> openroutine.dev.
+The API token on this machine **does** have DNS and Ruleset write scope, unlike the one
+openroutine.dev was set up with, so all of this was scripted. What was created:
+
+| Zone | DNS | Redirect rule |
+| :-- | :-- | :-- |
+| `agentstow.dev` | `www` AAAA `100::` proxied (apex is the Worker's own record) | `www.agentstow.dev` |
+| `agentstow.com` | apex + `www`, AAAA `100::` proxied | `agentstow.com`, `www.agentstow.com` |
+| `agentstow.org` | apex + `www`, AAAA `100::` proxied | `agentstow.org`, `www.agentstow.org` |
+
+Each rule is a single `http_request_dynamic_redirect` entry, 301, target
+`concat("https://agentstow.dev", http.request.uri.path)` with `preserve_query_string`.
+
+> **Expect 522s for the first minute.** A newly added hostname answers with 522 until its
+> rule and certificate finish propagating — the request reaches the edge and is proxied to
+> the `100::` discard address before the redirect rule is live. It resolves itself; two of
+> the five hosts did exactly this and then returned 301 without any change. Do not
+> "fix" it.
 
 ## Auto-deploy
 
