@@ -57,10 +57,6 @@ impl<'a> Reporter<'a> {
         let _ = writeln!(self.err, "error: {}", text.as_ref());
     }
 
-    pub fn warning_count(&self) -> usize {
-        self.warnings
-    }
-
     pub fn problem_count(&self) -> usize {
         self.problems
     }

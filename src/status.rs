@@ -7,10 +7,11 @@ use serde_json::{json, Value};
 
 use crate::config::Config;
 use crate::env::Env;
+use crate::family::Family;
 use crate::instructions;
 use crate::link::{self, Item, State};
 use crate::report::Reporter;
-use crate::store::{Store, FANOUT_FAMILIES};
+use crate::store::{self, Store};
 use crate::target;
 use crate::{EXIT_ACTIONABLE, EXIT_CLEAN, EXIT_ERROR};
 
@@ -25,36 +26,35 @@ struct TargetReport {
 pub fn run(env: &Env, config: &Config, r: &mut Reporter, as_json: bool) -> i32 {
     let store = Store::new(env.store());
     if !store.exists() {
-        r.problem(format!(
-            "no Store at {} — run `agentstow init` to create one",
-            store.root().display()
-        ));
+        r.problem(store::missing_message(store.root()));
         return EXIT_ERROR;
     }
 
     let mut targets: Vec<TargetReport> = Vec::new();
 
-    for (family, shape) in FANOUT_FAMILIES {
-        let scan = store.scan(family, *shape);
+    let resolved = target::resolve(env, config);
+
+    for family in Family::ALL {
+        let scan = store.scan(*family);
         for issue in &scan.issues {
             r.warn(issue.to_string());
         }
 
-        for target in target::resolve(env, config) {
-            let Some(dir) = target.fanout_dir(family) else {
+        for target in &resolved {
+            let Some(dir) = target.fanout_dir(*family) else {
                 continue;
             };
             let items = link::survey(&env.in_home(dir), store.root(), &scan.entries);
             targets.push(TargetReport {
                 agent: target.name.clone(),
-                family,
+                family: family.name(),
                 dir: dir.to_string(),
                 items,
             });
         }
     }
 
-    let store_file = store.root().join(crate::store::INSTRUCTIONS);
+    let store_file = store.root().join(store::INSTRUCTIONS);
     let instruction_items = instructions::survey(env, config, &store_file);
 
     let actionable: usize = targets

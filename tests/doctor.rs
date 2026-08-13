@@ -144,3 +144,49 @@ fn counts_the_agents_it_knows_about_but_did_not_find() {
         .assert_stdout_has(&format!("1 of {total}"))
         .assert_stdout_has(&format!("{} known agents are not installed", total - 1));
 }
+
+#[test]
+fn init_creates_the_store_and_nothing_else() {
+    let f = Fixture::bare();
+
+    f.run(&["init"]).assert_clean().assert_stdout_has("Created");
+
+    assert!(f.store().join("skills").is_dir());
+    assert!(f.store().join("commands").is_dir());
+    assert!(f.store().join("subagents").is_dir());
+    assert!(
+        !f.store().join("AGENTS.md").exists(),
+        "an empty AGENTS.md would fan out as empty instructions"
+    );
+    for agent in agentstow::registry::AGENTS {
+        assert!(
+            !f.path(agent.root).exists(),
+            "init must not create agent roots"
+        );
+    }
+}
+
+#[test]
+fn the_advice_to_run_init_actually_works() {
+    let f = Fixture::bare();
+    f.agent(".claude");
+    f.run(&["sync"])
+        .assert_code(1)
+        .assert_stderr_has("agentstow init");
+
+    f.run(&["init"]).assert_clean();
+
+    f.run(&["sync"]).assert_clean();
+}
+
+#[test]
+fn init_is_safe_to_run_twice() {
+    let f = Fixture::new();
+    f.store_skill("research");
+
+    f.run(&["init"])
+        .assert_clean()
+        .assert_stdout_has("already present");
+
+    assert!(f.store().join("skills/research/SKILL.md").exists());
+}

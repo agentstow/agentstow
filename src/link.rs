@@ -300,9 +300,12 @@ pub fn apply(item: &Item) -> io::Result<()> {
     }
 }
 
-/// Whether a Variant is byte-identical to the Store entry it shadows — an
-/// accident of history rather than a deliberate divergence.
-fn same_contents(a: &Path, b: &Path) -> bool {
+/// Whether two paths hold byte-identical content — used to tell an accidental
+/// duplicate from a deliberate divergence.
+///
+/// Anything unreadable answers `false`. Two unreadable trees must never compare
+/// equal: callers treat "identical" as permission to delete one side.
+pub fn same_contents(a: &Path, b: &Path) -> bool {
     match (a.is_dir(), b.is_dir()) {
         (true, true) => match (dir_digest(a), dir_digest(b)) {
             (Some(x), Some(y)) => x == y,

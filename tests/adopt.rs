@@ -129,7 +129,7 @@ fn a_path_outside_every_target_is_refused() {
         &f.path("somewhere/else/thing.md").display().to_string(),
     ])
     .assert_code(1)
-    .assert_stderr_has("not inside a fan-out directory");
+    .assert_stderr_has("not somewhere agentstow manages");
 }
 
 #[test]
@@ -142,4 +142,33 @@ fn a_path_that_does_not_exist_is_refused() {
     ])
     .assert_code(1)
     .assert_stderr_has("does not exist");
+}
+
+#[test]
+fn an_instructions_file_can_be_adopted_too() {
+    let f = machine();
+    f.file(".codex/AGENTS.md", "# my shared instructions\n");
+
+    let out = f.run(&["adopt", &f.path(".codex/AGENTS.md").display().to_string()]);
+
+    out.assert_clean().assert_stdout_has("instructions");
+    assert_eq!(
+        std::fs::read_to_string(f.store().join("AGENTS.md")).unwrap(),
+        "# my shared instructions\n"
+    );
+    assert!(f.is_symlink(".codex/AGENTS.md"));
+
+    // And from there it reaches every other agent.
+    f.run(&["sync"]).assert_clean();
+    assert!(f.path(".claude/CLAUDE.md").exists());
+}
+
+#[test]
+fn claudes_own_file_is_never_adopted_wholesale() {
+    let f = machine();
+    f.file(".claude/CLAUDE.md", "# claude's own notes\n");
+
+    f.run(&["adopt", &f.path(".claude/CLAUDE.md").display().to_string()])
+        .assert_code(1)
+        .assert_stderr_has("not somewhere agentstow manages");
 }

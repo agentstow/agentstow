@@ -4,11 +4,13 @@
 //! read-only: doctor never creates a directory, least of all an agent root,
 //! because a root's existence is what detection means.
 
-use std::fs;
+use std::ffi::CString;
+use std::os::unix::ffi::OsStrExt;
 use std::path::Path;
 
 use crate::config::Config;
 use crate::env::Env;
+use crate::family::Family;
 use crate::registry;
 use crate::report::Reporter;
 use crate::store::{self, Store};
@@ -25,10 +27,7 @@ pub fn run(env: &Env, config: &Config, r: &mut Reporter) -> i32 {
     if store.exists() {
         report_store(&store, r);
     } else {
-        r.problem(format!(
-            "no Store at {} — run `agentstow init` to create one",
-            store.root().display()
-        ));
+        r.problem(store::missing_message(store.root()));
     }
 
     report_agents(env, config, r);
@@ -37,9 +36,10 @@ pub fn run(env: &Env, config: &Config, r: &mut Reporter) -> i32 {
 }
 
 fn report_store(store: &Store, r: &mut Reporter) {
-    let skills = store.scan_dirs(store::SKILLS);
-    let commands = store.scan_markdown(store::COMMANDS);
-    let subagents = store.scan_markdown(store::SUBAGENTS);
+    let scans: Vec<(Family, store::Scan)> = Family::ALL
+        .iter()
+        .map(|family| (*family, store.scan(*family)))
+        .collect();
 
     let instructions = if store.root().join(store::INSTRUCTIONS).exists() {
         "present"
@@ -53,29 +53,32 @@ fn report_store(store: &Store, r: &mut Reporter) {
     };
 
     r.line("Store contents:");
-    r.line(format!("  skills        {}", skills.entries.len()));
-    r.line(format!("  commands      {}", commands.entries.len()));
-    r.line(format!("  subagents     {}", subagents.entries.len()));
+    for (family, scan) in &scans {
+        r.line(format!("  {:<13} {}", family.name(), scan.entries.len()));
+    }
     r.line(format!("  AGENTS.md     {instructions}"));
     r.line(format!("  mcp.json      {mcp}"));
     r.blank();
 
-    for issue in skills
-        .issues
-        .iter()
-        .chain(&commands.issues)
-        .chain(&subagents.issues)
-    {
-        r.warn(issue.to_string());
+    for (_, scan) in &scans {
+        for issue in &scan.issues {
+            r.warn(issue.to_string());
+        }
     }
 }
 
 fn report_agents(env: &Env, config: &Config, r: &mut Reporter) {
     let home = env.home();
     let detected = target::resolve(env, config);
-    let total = registry::AGENTS.len() + config.custom().len();
+    // Disabled agents are not "known but missing" — the user switched them off,
+    // so they leave the reckoning entirely.
+    let known = registry::AGENTS
+        .iter()
+        .filter(|a| !config.is_disabled(a.name))
+        .count()
+        + config.custom().len();
 
-    r.line(format!("Detected agents ({} of {total}):", detected.len()));
+    r.line(format!("Detected agents ({} of {known}):", detected.len()));
     if detected.is_empty() {
         r.line("  none — no agent config root found");
     }
@@ -93,7 +96,7 @@ fn report_agents(env: &Env, config: &Config, r: &mut Reporter) {
         }
 
         let root = home.join(&agent.root);
-        if is_readonly(&root) {
+        if !is_writable(&root) {
             r.problem(format!(
                 "{} config root is not writable: {}",
                 agent.name,
@@ -102,7 +105,7 @@ fn report_agents(env: &Env, config: &Config, r: &mut Reporter) {
         }
     }
 
-    let missing = total - detected.len();
+    let missing = known.saturating_sub(detected.len());
     if missing > 0 {
         r.blank();
         r.line(format!(
@@ -111,8 +114,12 @@ fn report_agents(env: &Env, config: &Config, r: &mut Reporter) {
     }
 }
 
-fn is_readonly(path: &Path) -> bool {
-    fs::metadata(path)
-        .map(|m| m.permissions().readonly())
-        .unwrap_or(false)
+/// Ask the operating system, not the permission bits: a directory owned by
+/// another user at 0755 is not read-only, yet we still cannot write in it.
+fn is_writable(path: &Path) -> bool {
+    let Ok(c_path) = CString::new(path.as_os_str().as_bytes()) else {
+        return false;
+    };
+    // SAFETY: c_path is a valid NUL-terminated string for the duration of the call.
+    unsafe { libc::access(c_path.as_ptr(), libc::W_OK) == 0 }
 }

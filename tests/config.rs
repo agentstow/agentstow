@@ -132,3 +132,15 @@ fn configuration_never_lands_in_the_store() {
         "the Store holds ecosystem content only"
     );
 }
+
+#[test]
+fn a_disabled_target_is_not_counted_as_missing() {
+    let f = Fixture::new();
+    f.agent(".claude");
+    config(&f, "[targets]\ncursor = false\n");
+
+    let out = f.run(&["doctor"]);
+
+    let total = agentstow::registry::AGENTS.len() - 1;
+    out.assert_stdout_has(&format!("1 of {total}"));
+}

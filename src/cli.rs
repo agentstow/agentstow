@@ -24,6 +24,8 @@ pub enum Command {
         #[arg(long)]
         dry_run: bool,
     },
+    /// Create the Store skeleton.
+    Init,
     /// Absorb an existing config into the Store, leaving a link behind.
     Adopt {
         /// The real file or directory to take into the Store.

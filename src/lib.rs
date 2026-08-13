@@ -14,6 +14,8 @@ pub mod cli;
 pub mod config;
 pub mod doctor;
 pub mod env;
+pub mod family;
+pub mod init;
 pub mod instructions;
 pub mod link;
 pub mod lock;
@@ -28,7 +30,7 @@ pub mod target;
 pub const EXIT_CLEAN: i32 = 0;
 /// The command could not complete.
 pub const EXIT_ERROR: i32 = 1;
-/// Reserved: actionable state exists (something to sync or resolve).
+/// Actionable state exists: something for `sync` to do.
 pub const EXIT_ACTIONABLE: i32 = 2;
 
 /// The single seam. `args` is argv including the program name; `vars` is the
@@ -79,6 +81,7 @@ pub fn run(
 
     match parsed.command {
         cli::Command::Sync { dry_run } => sync::run(&env, &config, &mut reporter, dry_run),
+        cli::Command::Init => init::run(&env, &mut reporter),
         cli::Command::Adopt { path } => adopt::run(&env, &config, &mut reporter, &path),
         cli::Command::Status { json } => status::run(&env, &config, &mut reporter, json),
         cli::Command::Doctor => doctor::run(&env, &config, &mut reporter),

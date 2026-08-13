@@ -1,25 +1,22 @@
 //! `sync` — make every Target match the Store.
 
 use std::path::Path;
-use std::time::Duration;
 
 use crate::config::Config;
 use crate::env::Env;
+use crate::family::Family;
 use crate::instructions;
 use crate::link::{self, Item};
 use crate::lock;
 use crate::report::Reporter;
-use crate::store::{Store, FANOUT_FAMILIES};
+use crate::store::{self, Store};
 use crate::target;
 use crate::{EXIT_CLEAN, EXIT_ERROR};
 
 pub fn run(env: &Env, config: &Config, r: &mut Reporter, dry_run: bool) -> i32 {
     let store = Store::new(env.store());
     if !store.exists() {
-        r.problem(format!(
-            "no Store at {} — run `agentstow init` to create one",
-            store.root().display()
-        ));
+        r.problem(store::missing_message(store.root()));
         return EXIT_ERROR;
     }
 
@@ -27,7 +24,7 @@ pub fn run(env: &Env, config: &Config, r: &mut Reporter, dry_run: bool) -> i32 {
     let _lock = if dry_run {
         None
     } else {
-        match lock::acquire(env.config_dir(), lock_timeout(env)) {
+        match lock::acquire(env.config_dir(), lock::timeout(env)) {
             Ok(guard) => Some(guard),
             Err(e) => {
                 r.problem(e.to_string());
@@ -42,15 +39,16 @@ pub fn run(env: &Env, config: &Config, r: &mut Reporter, dry_run: bool) -> i32 {
     }
 
     let mut changes = 0usize;
+    let targets = target::resolve(env, config);
 
-    for (family, shape) in FANOUT_FAMILIES {
-        let scan = store.scan(family, *shape);
+    for family in Family::ALL {
+        let scan = store.scan(*family);
         for issue in &scan.issues {
             r.warn(issue.to_string());
         }
 
-        for target in target::resolve(env, config) {
-            let Some(dir) = target.fanout_dir(family) else {
+        for target in &targets {
+            let Some(dir) = target.fanout_dir(*family) else {
                 continue;
             };
             let target_dir = env.in_home(dir);
@@ -84,7 +82,7 @@ fn sync_instructions(
     r: &mut Reporter,
     dry_run: bool,
 ) -> usize {
-    let store_file = store.root().join(crate::store::INSTRUCTIONS);
+    let store_file = store.root().join(store::INSTRUCTIONS);
     let items = instructions::survey(env, config, &store_file);
     let noteworthy: Vec<&instructions::Item> = items
         .iter()
@@ -169,13 +167,4 @@ fn sync_target(
     }
 
     changed
-}
-
-/// How long a mutating command waits for a competing one.
-pub fn lock_timeout(env: &Env) -> Duration {
-    let ms = env
-        .var("AGENTSTOW_LOCK_TIMEOUT_MS")
-        .and_then(|v| v.parse::<u64>().ok())
-        .unwrap_or(lock::DEFAULT_TIMEOUT_MS);
-    Duration::from_millis(ms)
 }

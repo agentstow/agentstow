@@ -7,6 +7,8 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
+use crate::family::{Family, Shape};
+
 /// Store-relative directory for each fan-out family.
 pub const SKILLS: &str = "skills";
 pub const COMMANDS: &str = "commands";
@@ -32,15 +34,15 @@ pub struct Entry {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Issue {
     /// A dot-prefixed name: invisible to most agents' scanners, so never synced.
-    DotPrefixed { family: &'static str, name: String },
+    DotPrefixed { family: Family, name: String },
     /// Wrong shape for the family (a file where a directory is required).
     WrongShape {
-        family: &'static str,
+        family: Family,
         name: String,
         want: &'static str,
     },
     /// A symlink in the Store whose own target is missing.
-    DanglingLink { family: &'static str, name: String },
+    DanglingLink { family: Family, name: String },
     /// The family directory could not be read.
     Unreadable { path: PathBuf, error: String },
 }
@@ -73,6 +75,15 @@ pub struct Scan {
     pub issues: Vec<Issue>,
 }
 
+/// What to tell the user when there is no Store at all. One message, so the
+/// advice cannot drift between commands.
+pub fn missing_message(root: &Path) -> String {
+    format!(
+        "no Store at {} — run `agentstow init` to create one",
+        root.display()
+    )
+}
+
 /// The canonical Store.
 #[derive(Debug, Clone)]
 pub struct Store {
@@ -97,19 +108,10 @@ impl Store {
         self.root.join(family)
     }
 
-    /// Scan a directory-shaped family (skills): every entry must be a directory.
-    pub fn scan_dirs(&self, family: &'static str) -> Scan {
-        self.scan(family, Shape::Directory)
-    }
-
-    /// Scan a markdown-file family (commands, subagents).
-    pub fn scan_markdown(&self, family: &'static str) -> Scan {
-        self.scan(family, Shape::Markdown)
-    }
-
     /// Scan one family directory according to its shape.
-    pub fn scan(&self, family: &'static str, shape: Shape) -> Scan {
-        let dir = self.family_dir(family);
+    pub fn scan(&self, family: Family) -> Scan {
+        let shape = family.shape();
+        let dir = self.family_dir(family.name());
         let mut scan = Scan::default();
 
         let read = match fs::read_dir(&dir) {
@@ -189,20 +191,3 @@ impl Store {
         scan
     }
 }
-
-/// What a family's Store entries look like on disk.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Shape {
-    /// One directory per entry (skills).
-    Directory,
-    /// One markdown file per entry (commands, subagents).
-    Markdown,
-}
-
-/// Every fan-out family, in report order. Adding a family is a row here plus a
-/// registry column — the sync and status loops are already generic over it.
-pub const FANOUT_FAMILIES: &[(&str, Shape)] = &[
-    (SKILLS, Shape::Directory),
-    (COMMANDS, Shape::Markdown),
-    (SUBAGENTS, Shape::Markdown),
-];

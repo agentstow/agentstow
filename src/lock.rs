@@ -9,8 +9,20 @@ use std::os::unix::io::AsRawFd;
 use std::path::Path;
 use std::time::{Duration, Instant};
 
+use crate::env::Env;
+
 /// How long a mutating command waits for a competing one to finish.
 pub const DEFAULT_TIMEOUT_MS: u64 = 30_000;
+
+/// How long this invocation should wait, honouring the env override that lets
+/// tests prove a busy lock fails cleanly without a 30 second pause.
+pub fn timeout(env: &Env) -> Duration {
+    let ms = env
+        .var("AGENTSTOW_LOCK_TIMEOUT_MS")
+        .and_then(|v| v.parse::<u64>().ok())
+        .unwrap_or(DEFAULT_TIMEOUT_MS);
+    Duration::from_millis(ms)
+}
 
 /// Held for as long as the guard lives; released on drop.
 pub struct Lock {

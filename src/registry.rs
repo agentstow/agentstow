@@ -8,6 +8,8 @@
 
 use std::path::{Path, PathBuf};
 
+use crate::family::Family;
+
 /// How an agent gets skills.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Skills {
@@ -139,21 +141,20 @@ impl Agent {
     /// The home-relative fan-out directory for a family, when this agent takes
     /// symlinks for it. `None` covers native agents and absent surfaces alike —
     /// both mean "do not fan out here".
-    pub fn fanout_dir(&self, family: &str) -> Option<&'static str> {
+    pub fn fanout_dir(&self, family: Family) -> Option<&'static str> {
         match family {
-            "skills" => match self.skills {
+            Family::Skills => match self.skills {
                 Skills::FanOut(dir) => Some(dir),
                 _ => None,
             },
-            "commands" => match self.commands {
+            Family::Commands => match self.commands {
                 Commands::FanOut(dir) => Some(dir),
                 _ => None,
             },
-            "subagents" => match self.subagents {
+            Family::Subagents => match self.subagents {
                 Subagents::FanOut(dir) => Some(dir),
                 _ => None,
             },
-            _ => None,
         }
     }
 

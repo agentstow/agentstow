@@ -18,6 +18,8 @@ use std::path::Path;
 
 use toml_edit::{DocumentMut, Item};
 
+use crate::family::Family;
+
 /// Where the config file lives inside the config directory.
 pub const FILE: &str = "agentstow.toml";
 
@@ -27,7 +29,7 @@ pub struct CustomTarget {
     pub name: String,
     pub root: String,
     /// Home-relative fan-out directory per family.
-    pub fanout: BTreeMap<String, String>,
+    pub fanout: BTreeMap<Family, String>,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -99,9 +101,9 @@ impl Config {
                     .to_string();
 
                 let mut fanout = BTreeMap::new();
-                for family in ["skills", "commands", "subagents"] {
-                    if let Some(dir) = table.get(family).and_then(|v| v.as_str()) {
-                        fanout.insert(family.to_string(), dir.to_string());
+                for family in Family::ALL {
+                    if let Some(dir) = table.get(family.name()).and_then(|v| v.as_str()) {
+                        fanout.insert(*family, dir.to_string());
                     }
                 }
 

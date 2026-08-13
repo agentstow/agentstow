@@ -178,3 +178,32 @@ fn a_second_sync_leaves_the_instructions_alone() {
 
     assert_eq!(after_first, f.tree());
 }
+
+#[test]
+fn prose_mentioning_the_store_path_is_not_an_import() {
+    let f = machine();
+    // The path appears, but no line actually imports it.
+    f.file(
+        ".claude/CLAUDE.md",
+        "# notes\n\nInstructions live in ~/.agents/AGENTS.md — edit there.\n",
+    );
+
+    f.run(&["sync"]).assert_clean();
+
+    let body = std::fs::read_to_string(f.path(".claude/CLAUDE.md")).unwrap();
+    assert!(
+        body.lines().any(|l| l.trim() == "@~/.agents/AGENTS.md"),
+        "a real import line must still be added: {body}"
+    );
+}
+
+#[test]
+fn a_conflict_names_the_tool_that_owns_the_file() {
+    let f = machine();
+    f.file(
+        ".config/opencode/AGENTS.md",
+        "<claude-mem-context>\nstuff\n",
+    );
+
+    f.run(&["status"]).assert_stdout_has("owned by claude-mem");
+}

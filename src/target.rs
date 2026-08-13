@@ -8,6 +8,7 @@ use std::path::Path;
 
 use crate::config::Config;
 use crate::env::Env;
+use crate::family::Family;
 use crate::registry::{self, Agent};
 
 /// One Target this invocation will act on.
@@ -16,7 +17,7 @@ pub struct Target {
     pub name: String,
     pub root: String,
     /// Home-relative fan-out directory per family.
-    fanout: Vec<(String, String)>,
+    fanout: Vec<(Family, String)>,
     /// The registry row, when this is a built-in agent. Config-defined targets
     /// have none, and therefore take fan-out families only.
     pub agent: Option<&'static Agent>,
@@ -24,12 +25,12 @@ pub struct Target {
 
 impl Target {
     fn from_agent(agent: &'static Agent) -> Self {
-        let fanout = ["skills", "commands", "subagents"]
+        let fanout = Family::ALL
             .iter()
             .filter_map(|family| {
                 agent
-                    .fanout_dir(family)
-                    .map(|dir| (family.to_string(), dir.to_string()))
+                    .fanout_dir(*family)
+                    .map(|dir| (*family, dir.to_string()))
             })
             .collect();
 
@@ -42,10 +43,10 @@ impl Target {
     }
 
     /// The home-relative fan-out directory for a family, if this Target takes one.
-    pub fn fanout_dir(&self, family: &str) -> Option<&str> {
+    pub fn fanout_dir(&self, family: Family) -> Option<&str> {
         self.fanout
             .iter()
-            .find(|(f, _)| f == family)
+            .find(|(f, _)| *f == family)
             .map(|(_, dir)| dir.as_str())
     }
 
@@ -60,14 +61,7 @@ impl Target {
             None => self
                 .fanout
                 .iter()
-                .map(|(family, dir)| {
-                    let family: &'static str = match family.as_str() {
-                        "skills" => "skills",
-                        "commands" => "commands",
-                        _ => "subagents",
-                    };
-                    (family, format!("fan-out → {dir}"))
-                })
+                .map(|(family, dir)| (family.name(), format!("fan-out → {dir}")))
                 .collect(),
         }
     }
@@ -85,11 +79,7 @@ pub fn resolve(env: &Env, config: &Config) -> Vec<Target> {
         targets.push(Target {
             name: custom.name.clone(),
             root: custom.root.clone(),
-            fanout: custom
-                .fanout
-                .iter()
-                .map(|(f, d)| (f.clone(), d.clone()))
-                .collect(),
+            fanout: custom.fanout.iter().map(|(f, d)| (*f, d.clone())).collect(),
             agent: None,
         });
     }

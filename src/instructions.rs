@@ -70,6 +70,24 @@ pub struct Item {
     link_text: Option<PathBuf>,
     /// The line to ensure, for the import-line mechanism.
     import_line: Option<String>,
+    /// The tool that appears to own a conflicting file, when recognisable.
+    occupant: Option<String>,
+}
+
+/// Markers other tools leave in files they generate, so a conflict can name the
+/// culprit instead of shrugging. Unrecognised content simply stays anonymous.
+const KNOWN_OCCUPANTS: &[(&str, &str)] = &[
+    ("<claude-mem-context>", "claude-mem"),
+    ("claude-mem", "claude-mem"),
+];
+
+fn identify_occupant(path: &Path) -> Option<String> {
+    let body = fs::read_to_string(path).ok()?;
+    let head: String = body.chars().take(2048).collect();
+    KNOWN_OCCUPANTS
+        .iter()
+        .find(|(marker, _)| head.contains(marker))
+        .map(|(_, tool)| (*tool).to_string())
 }
 
 impl Item {
@@ -80,10 +98,16 @@ impl Item {
             State::Missing => "will be linked to the Store".into(),
             State::ImportPresent => "imports the Store instructions".into(),
             State::ImportMissing => "the import line will be added".into(),
-            State::Conflict => format!(
-                "{} is owned by something else — move or merge it, then sync again",
-                self.path.display()
-            ),
+            State::Conflict => match &self.occupant {
+                Some(tool) => format!(
+                    "{} is owned by {tool} — move or merge it, then sync again",
+                    self.path.display()
+                ),
+                None => format!(
+                    "{} is owned by something else — move or merge it, then sync again",
+                    self.path.display()
+                ),
+            },
             State::Foreign => "points outside the Store — left alone".into(),
         }
     }
@@ -139,12 +163,19 @@ fn link_item(target: &str, path: PathBuf, store_file: &Path) -> Item {
         Ok(_) => State::Conflict,
     };
 
+    let occupant = if state == State::Conflict {
+        identify_occupant(&path)
+    } else {
+        None
+    };
+
     Item {
         target: target.to_string(),
         path,
         state,
         link_text: Some(text),
         import_line: None,
+        occupant,
     }
 }
 
@@ -156,10 +187,13 @@ fn import_item(target: &str, path: PathBuf, env: &Env) -> Item {
 
     let state = match fs::read_to_string(&path) {
         Ok(body) => {
-            if body
-                .lines()
-                .any(|l| l.trim() == line || l.contains(&reference))
-            {
+            // Only a line that *is* the import counts. Prose mentioning the
+            // path, or a commented-out import, must not suppress the real one.
+            let imported = body.lines().any(|l| {
+                let l = l.trim();
+                l == line || (l.starts_with('@') && l[1..].trim() == reference)
+            });
+            if imported {
                 State::ImportPresent
             } else {
                 State::ImportMissing
@@ -175,6 +209,7 @@ fn import_item(target: &str, path: PathBuf, env: &Env) -> Item {
         state,
         link_text: None,
         import_line: Some(line),
+        occupant: None,
     }
 }
 

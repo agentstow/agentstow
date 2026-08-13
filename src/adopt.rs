@@ -9,20 +9,19 @@ use std::path::{Path, PathBuf};
 
 use crate::config::Config;
 use crate::env::Env;
+use crate::family::Family;
 use crate::link;
 use crate::lock;
+use crate::registry::Instructions;
 use crate::report::Reporter;
-use crate::store::{Store, FANOUT_FAMILIES};
+use crate::store::{self, Store};
 use crate::target;
 use crate::{EXIT_CLEAN, EXIT_ERROR};
 
 pub fn run(env: &Env, config: &Config, r: &mut Reporter, raw_path: &str) -> i32 {
     let store = Store::new(env.store());
     if !store.exists() {
-        r.problem(format!(
-            "no Store at {} — run `agentstow init` to create one",
-            store.root().display()
-        ));
+        r.problem(store::missing_message(store.root()));
         return EXIT_ERROR;
     }
 
@@ -44,11 +43,11 @@ pub fn run(env: &Env, config: &Config, r: &mut Reporter, raw_path: &str) -> i32 
         return EXIT_ERROR;
     }
 
-    // Which Target directory is this in, and therefore which family?
-    let Some((target_name, family)) = locate(env, config, &path) else {
+    // Which Target surface is this, and therefore where does it belong?
+    let Some(placement) = locate(env, config, &path) else {
         r.problem(format!(
-            "{} is not inside a fan-out directory agentstow manages — \
-             run `agentstow doctor` to see which directories those are",
+            "{} is not somewhere agentstow manages — \
+             run `agentstow doctor` to see the directories it syncs",
             path.display()
         ));
         return EXIT_ERROR;
@@ -58,11 +57,11 @@ pub fn run(env: &Env, config: &Config, r: &mut Reporter, raw_path: &str) -> i32 
         .file_name()
         .map(|n| n.to_string_lossy().into_owned())
         .unwrap_or_default();
-    let destination = store.family_dir(family).join(&file_name);
+    let destination = store.root().join(&placement.store_rel);
 
     // Everything is decided before the lock is taken, so a refusal leaves the
     // machine exactly as it was — not even a lock file.
-    if destination.exists() && !same_contents(&path, &destination) {
+    if destination.exists() && !link::same_contents(&path, &destination) {
         r.problem(format!(
             "{} differs from the Store copy at {} — this is a Variant. \
              Merge it by hand if you want it in the Store; agentstow will not \
@@ -73,7 +72,7 @@ pub fn run(env: &Env, config: &Config, r: &mut Reporter, raw_path: &str) -> i32 
         return EXIT_ERROR;
     }
 
-    let _lock = match lock::acquire(env.config_dir(), crate::sync::lock_timeout(env)) {
+    let _lock = match lock::acquire(env.config_dir(), lock::timeout(env)) {
         Ok(guard) => guard,
         Err(e) => {
             r.problem(e.to_string());
@@ -82,10 +81,17 @@ pub fn run(env: &Env, config: &Config, r: &mut Reporter, raw_path: &str) -> i32 
     };
 
     if destination.exists() {
-        return relink(&path, &destination, &file_name, target_name, r);
+        return relink(&path, &destination, &file_name, &placement.target, r);
     }
 
-    move_in(&path, &destination, &file_name, family, target_name, r)
+    move_in(
+        &path,
+        &destination,
+        &file_name,
+        &placement.family,
+        &placement.target,
+        r,
+    )
 }
 
 /// The Store does not have this name: move it in, leave a link behind.
@@ -94,7 +100,7 @@ fn move_in(
     destination: &Path,
     file_name: &str,
     family: &str,
-    target: String,
+    target: &str,
     r: &mut Reporter,
 ) -> i32 {
     if let Some(parent) = destination.parent() {
@@ -130,13 +136,7 @@ fn move_in(
 }
 
 /// The Store already has an identical copy: drop the duplicate, link instead.
-fn relink(
-    path: &Path,
-    destination: &Path,
-    file_name: &str,
-    target: String,
-    r: &mut Reporter,
-) -> i32 {
+fn relink(path: &Path, destination: &Path, file_name: &str, target: &str, r: &mut Reporter) -> i32 {
     let removed = if path.is_dir() {
         fs::remove_dir_all(path)
     } else {
@@ -170,16 +170,51 @@ fn place_link(path: &Path, destination: &Path) -> std::io::Result<PathBuf> {
     Ok(text)
 }
 
-/// Which Target and family owns the directory this path sits in.
-fn locate(env: &Env, config: &Config, path: &Path) -> Option<(String, &'static str)> {
+/// Where in the Store an adopted path belongs: which Target it came from, and
+/// the Store-relative path it will occupy.
+struct Placement {
+    target: String,
+    /// What to call the family in reports.
+    family: String,
+    /// Store-relative destination, e.g. `skills/research` or `AGENTS.md`.
+    store_rel: PathBuf,
+}
+
+/// Match a path against every Target surface agentstow manages: the fan-out
+/// directories, and the per-agent instructions destinations.
+fn locate(env: &Env, config: &Config, path: &Path) -> Option<Placement> {
     let parent = link::normalize(path.parent()?);
+    let file_name = path.file_name()?.to_string_lossy().into_owned();
+
     for target in target::resolve(env, config) {
-        for (family, _) in FANOUT_FAMILIES {
-            let Some(dir) = target.fanout_dir(family) else {
+        for family in Family::ALL {
+            let Some(dir) = target.fanout_dir(*family) else {
                 continue;
             };
             if link::normalize(&env.in_home(dir)) == parent {
-                return Some((target.name.clone(), family));
+                return Some(Placement {
+                    target: target.name.clone(),
+                    family: family.name().to_string(),
+                    store_rel: PathBuf::from(family.name()).join(&file_name),
+                });
+            }
+        }
+
+        // Instructions are a single file rather than a directory of entries, so
+        // they are matched by full path, not by parent directory.
+        if let Some(agent) = target.agent {
+            let destination = match agent.instructions {
+                Instructions::Symlink(rel) => Some(env.in_home(rel)),
+                Instructions::RulesDirLink(dir) => Some(env.in_home(dir).join("AGENTS.md")),
+                // Claude's file is the user's own; it is never adopted wholesale.
+                Instructions::ImportLine(_) | Instructions::None => None,
+            };
+            if destination.map(|d| link::normalize(&d)) == Some(link::normalize(path)) {
+                return Some(Placement {
+                    target: target.name.clone(),
+                    family: "instructions".to_string(),
+                    store_rel: PathBuf::from(store::INSTRUCTIONS),
+                });
             }
         }
     }
@@ -222,34 +257,4 @@ fn copy_tree(from: &Path, to: &Path) -> std::io::Result<()> {
     } else {
         fs::copy(from, to).map(|_| ())
     }
-}
-
-fn same_contents(a: &Path, b: &Path) -> bool {
-    match (a.is_dir(), b.is_dir()) {
-        (true, true) => tree_bytes(a) == tree_bytes(b),
-        (false, false) => match (fs::read(a), fs::read(b)) {
-            (Ok(x), Ok(y)) => x == y,
-            _ => false,
-        },
-        _ => false,
-    }
-}
-
-fn tree_bytes(root: &Path) -> Option<Vec<(String, Vec<u8>)>> {
-    let mut acc: Vec<(String, Vec<u8>)> = Vec::new();
-    fn walk(root: &Path, dir: &Path, acc: &mut Vec<(String, Vec<u8>)>) -> Option<()> {
-        for entry in fs::read_dir(dir).ok()?.flatten() {
-            let path = entry.path();
-            let rel = path.strip_prefix(root).ok()?.display().to_string();
-            if path.is_dir() {
-                walk(root, &path, acc)?;
-            } else {
-                acc.push((rel, fs::read(&path).ok()?));
-            }
-        }
-        Some(())
-    }
-    walk(root, root, &mut acc)?;
-    acc.sort_by(|a, b| a.0.cmp(&b.0));
-    Some(acc)
 }

@@ -32,6 +32,10 @@ _Avoid_: import, migrate
 A symlink, file, or MCP server entry in a target that agentstow does not own (doesn't resolve into the store / name not in the store). Never touched, listed by `status`.
 _Avoid_: unmanaged, external, orphan
 
+**Conflict**:
+A Foreign *file* occupying a destination agentstow would otherwise write — reported with the remedy named, never overwritten. A kind of Foreign, and never a Variant (a Variant shadows a Store entry deliberately; a Conflict blocks one).
+_Avoid_: clash, collision, blocked
+
 **Render**:
 Translating a store MCP server into one agent's native format and key-merging it into that agent's config file. The non-symlink sync path, used only where identical bytes are impossible.
 _Avoid_: compile, generate, apply
