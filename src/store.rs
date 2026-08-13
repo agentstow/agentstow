@@ -20,8 +20,11 @@ pub const MCP: &str = "mcp.json";
 /// One usable entry in a Store family directory.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Entry {
-    /// Name as agents see it — directory name, or file stem for file families.
+    /// Display name: the directory name, or the file stem for file families.
     pub name: String,
+    /// The name this entry must have in a Target — for markdown families that
+    /// keeps the `.md` suffix, which agents' scanners require.
+    pub file_name: String,
     pub path: PathBuf,
 }
 
@@ -144,7 +147,11 @@ impl Store {
             match shape {
                 Shape::Directory => {
                     if path.is_dir() {
-                        scan.entries.push(Entry { name: raw, path });
+                        scan.entries.push(Entry {
+                            name: raw.clone(),
+                            file_name: raw,
+                            path,
+                        });
                     } else {
                         scan.issues.push(Issue::WrongShape {
                             family,
@@ -161,8 +168,11 @@ impl Store {
                             want: "markdown file",
                         });
                     } else if raw.ends_with(".md") {
-                        let name = raw.trim_end_matches(".md").to_string();
-                        scan.entries.push(Entry { name, path });
+                        scan.entries.push(Entry {
+                            name: raw.trim_end_matches(".md").to_string(),
+                            file_name: raw,
+                            path,
+                        });
                     } else {
                         scan.issues.push(Issue::WrongShape {
                             family,
@@ -191,4 +201,8 @@ pub enum Shape {
 
 /// Every fan-out family, in report order. Adding a family is a row here plus a
 /// registry column — the sync and status loops are already generic over it.
-pub const FANOUT_FAMILIES: &[(&str, Shape)] = &[(SKILLS, Shape::Directory)];
+pub const FANOUT_FAMILIES: &[(&str, Shape)] = &[
+    (SKILLS, Shape::Directory),
+    (COMMANDS, Shape::Markdown),
+    (SUBAGENTS, Shape::Markdown),
+];

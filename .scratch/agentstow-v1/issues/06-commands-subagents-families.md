@@ -4,10 +4,10 @@
 
 **Blocked by:** 02 — Skills fan-out `sync`.
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] Store commands appear as canonical links in every markdown command target; excluded agents receive nothing
-- [ ] Store subagents reach Claude and opencode only
-- [ ] Variants, Foreign entries, pruning, `--dry-run`, and `status` vocabulary all work identically for the new families
-- [ ] Verify-at-build command rows (Cursor, Roo, Windsurf) confirmed against current agent releases or corrected
-- [ ] Gemini commands are explicitly *not* linked (that's ticket 12's rendered path)
+- [x] Store commands appear as canonical links in every markdown command target; excluded agents receive nothing
+- [x] Store subagents reach Claude and opencode only
+- [x] Variants, Foreign entries, pruning, `--dry-run`, and `status` vocabulary all work identically for the new families
+- [x] Verify-at-build command rows (Cursor, Roo, Windsurf) confirmed against current agent releases or corrected
+- [x] Gemini commands are explicitly *not* linked (that's ticket 12's rendered path)

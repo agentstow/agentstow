@@ -211,10 +211,10 @@ pub struct Item {
 /// it would be guessing.
 pub fn survey(target_dir: &Path, store: &Path, entries: &[Entry]) -> Vec<Item> {
     let mut items = Vec::new();
-    let wanted: BTreeSet<&str> = entries.iter().map(|e| e.name.as_str()).collect();
+    let wanted: BTreeSet<&str> = entries.iter().map(|e| e.file_name.as_str()).collect();
 
     for entry in entries {
-        let path = target_dir.join(&entry.name);
+        let path = target_dir.join(&entry.file_name);
         let canonical = relative_from(target_dir, &entry.path);
 
         let state = match classify(&path, store) {
