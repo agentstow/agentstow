@@ -19,12 +19,14 @@ pub mod init;
 pub mod instructions;
 pub mod link;
 pub mod lock;
+pub mod mcp;
 pub mod registry;
 pub mod report;
 pub mod status;
 pub mod store;
 pub mod sync;
 pub mod target;
+pub mod write;
 
 /// Everything is in the state the Store describes.
 pub const EXIT_CLEAN: i32 = 0;

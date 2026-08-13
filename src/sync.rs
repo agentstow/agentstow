@@ -1,6 +1,6 @@
 //! `sync` — make every Target match the Store.
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use crate::config::Config;
 use crate::env::Env;
@@ -8,6 +8,7 @@ use crate::family::Family;
 use crate::instructions;
 use crate::link::{self, Item};
 use crate::lock;
+use crate::mcp;
 use crate::report::Reporter;
 use crate::store::{self, Store};
 use crate::target;
@@ -59,12 +60,23 @@ pub fn run(env: &Env, config: &Config, r: &mut Reporter, dry_run: bool) -> i32 {
 
     changes += sync_instructions(env, config, &store, r, dry_run);
 
+    match sync_mcp(env, config, &store, r, dry_run) {
+        Ok(n) => changes += n,
+        Err(e) => {
+            // Nothing has been written: an MCP failure stops the whole family
+            // rather than leaving some agents updated and others not.
+            r.problem(e.to_string());
+            return EXIT_ERROR;
+        }
+    }
+
     if changes == 0 {
         r.line("Everything is up to date.");
     } else {
         r.blank();
+        let noun = if changes == 1 { "change" } else { "changes" };
         let verb = if dry_run { "would be made" } else { "made" };
-        r.line(format!("{changes} changes {verb}."));
+        r.line(format!("{changes} {noun} {verb}."));
     }
 
     if r.problem_count() > 0 {
@@ -72,6 +84,83 @@ pub fn run(env: &Env, config: &Config, r: &mut Reporter, dry_run: bool) -> i32 {
     } else {
         EXIT_CLEAN
     }
+}
+
+/// The MCP family: one Store file, rendered and key-merged per agent.
+fn sync_mcp(
+    env: &Env,
+    config: &Config,
+    store: &Store,
+    r: &mut Reporter,
+    dry_run: bool,
+) -> Result<usize, mcp::Error> {
+    let store_file = store.root().join(store::MCP);
+    let survey = mcp::survey(env, config, &store_file)?;
+    // A config agentstow cannot parse is a real fault worth an exit code, but
+    // it must not stop the Targets that are healthy.
+    for skipped in &survey.skipped {
+        r.problem(skipped.clone());
+    }
+    let noteworthy: Vec<&mcp::Item> = survey
+        .items
+        .iter()
+        .filter(|i| i.state != mcp::State::Managed)
+        .collect();
+    if noteworthy.is_empty() {
+        return Ok(0);
+    }
+
+    r.line("mcp (mcp.json)");
+    for item in &noteworthy {
+        r.line(format!(
+            "  {:<9} {} → {} — {}",
+            item.state.label(),
+            item.name,
+            item.target,
+            item.note()
+        ));
+    }
+
+    let changing: Vec<&mcp::Item> = noteworthy
+        .into_iter()
+        .filter(|i| i.state.needs_change())
+        .collect();
+    if changing.is_empty() || dry_run {
+        return Ok(changing.len());
+    }
+
+    // One write per config file, not per server: an agent may take more than
+    // one family in the same file.
+    let mut by_file: Vec<(PathBuf, Vec<&mcp::Item>)> = Vec::new();
+    for item in changing.iter().copied() {
+        match by_file.iter_mut().find(|(path, _)| path == &item.path) {
+            Some((_, group)) => group.push(item),
+            None => by_file.push((item.path.clone(), vec![item])),
+        }
+    }
+
+    // One agent's write failing must not cancel the others: everything was
+    // already resolved before any file was opened, so the remaining writes are
+    // still correct. Each failure is reported and the run ends non-clean.
+    let mut written = 0usize;
+    for (path, group) in &by_file {
+        let root_key = group[0].root_key;
+        match mcp::apply(path, root_key, group) {
+            Ok(report) => {
+                written += group.len();
+                if report.exposed {
+                    r.warn(format!(
+                        "{} has mode {:o} — it now holds resolved secrets and can be read by others",
+                        report.path.display(),
+                        report.mode
+                    ));
+                }
+            }
+            Err(e) => r.problem(e.to_string()),
+        }
+    }
+
+    Ok(written)
 }
 
 /// The instructions family: one Store file, three per-agent mechanisms.

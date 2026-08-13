@@ -4,11 +4,11 @@
 
 **Blocked by:** 03 — `status` for link families.
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] A Store server appears in the target's `mcpServers`; all unrelated keys in the file survive structurally intact
-- [ ] Foreign server names are never modified and appear in `status`
-- [ ] A hand-edited Managed entry is restored to the Store's render, with a per-key diff printed and secrets redacted
-- [ ] `${env:VAR}` resolves at sync; an unset variable is a clear error naming the variable; resolved values never appear in any diff, status, or dry-run output
-- [ ] A symlinked destination file keeps its symlink; the resolved file receives the atomic write
-- [ ] A second sync is a no-op; `status` gains Managed/Foreign server reporting with the standard exit-code contract
+- [x] A Store server appears in the target's `mcpServers`; all unrelated keys in the file survive structurally intact
+- [x] Foreign server names are never modified and appear in `status`
+- [x] A hand-edited Managed entry is restored to the Store's render, with a per-key diff printed and secrets redacted
+- [x] `${env:VAR}` resolves at sync; an unset variable is a clear error naming the variable; resolved values never appear in any diff, status, or dry-run output
+- [x] A symlinked destination file keeps its symlink; the resolved file receives the atomic write
+- [x] A second sync is a no-op; `status` gains Managed/Foreign server reporting with the standard exit-code contract

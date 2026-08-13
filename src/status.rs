@@ -10,6 +10,7 @@ use crate::env::Env;
 use crate::family::Family;
 use crate::instructions;
 use crate::link::{self, Item, State};
+use crate::mcp;
 use crate::report::Reporter;
 use crate::store::{self, Store};
 use crate::target;
@@ -57,6 +58,20 @@ pub fn run(env: &Env, config: &Config, r: &mut Reporter, as_json: bool) -> i32 {
     let store_file = store.root().join(store::INSTRUCTIONS);
     let instruction_items = instructions::survey(env, config, &store_file);
 
+    let mcp_survey = match mcp::survey(env, config, &store.root().join(store::MCP)) {
+        Ok(survey) => survey,
+        Err(e) => {
+            r.problem(e.to_string());
+            return EXIT_ERROR;
+        }
+    };
+    // Reported and counted, but the rest of the report still prints: one
+    // unreadable third-party file must never blank out a read-only answer.
+    for skipped in &mcp_survey.skipped {
+        r.problem(skipped.clone());
+    }
+    let mcp_items = mcp_survey.items;
+
     let actionable: usize = targets
         .iter()
         .flat_map(|t| &t.items)
@@ -65,12 +80,19 @@ pub fn run(env: &Env, config: &Config, r: &mut Reporter, as_json: bool) -> i32 {
         + instruction_items
             .iter()
             .filter(|i| i.state.actionable())
-            .count();
+            .count()
+        + mcp_items.iter().filter(|i| i.state.actionable()).count();
 
     if as_json {
-        r.json(&as_value(&store, &targets, &instruction_items, actionable));
+        r.json(&as_value(
+            &store,
+            &targets,
+            &instruction_items,
+            &mcp_items,
+            actionable,
+        ));
     } else {
-        human(&targets, &instruction_items, actionable, r);
+        human(&targets, &instruction_items, &mcp_items, actionable, r);
     }
 
     if r.problem_count() > 0 {
@@ -85,6 +107,7 @@ pub fn run(env: &Env, config: &Config, r: &mut Reporter, as_json: bool) -> i32 {
 fn human(
     targets: &[TargetReport],
     instruction_items: &[instructions::Item],
+    mcp_items: &[mcp::Item],
     actionable: usize,
     r: &mut Reporter,
 ) {
@@ -134,6 +157,19 @@ fn human(
         }
     }
 
+    if !mcp_items.is_empty() {
+        r.line("mcp (mcp.json)");
+        for item in mcp_items {
+            let note = item.note();
+            let name = format!("{} → {}", item.name, item.target);
+            if note.is_empty() {
+                r.line(format!("  {:<17} {name}", item.state.label()));
+            } else {
+                r.line(format!("  {:<17} {name} — {note}", item.state.label()));
+            }
+        }
+    }
+
     r.blank();
     if actionable == 0 {
         r.line("Everything is in sync.");
@@ -148,6 +184,7 @@ fn as_value(
     store: &Store,
     targets: &[TargetReport],
     instruction_items: &[instructions::Item],
+    mcp_items: &[mcp::Item],
     actionable: usize,
 ) -> Value {
     let targets: Vec<Value> = targets
@@ -184,9 +221,22 @@ fn as_value(
         })
         .collect();
 
+    let mcp: Vec<Value> = mcp_items
+        .iter()
+        .map(|i| {
+            json!({
+                "agent": i.target,
+                "name": i.name,
+                "state": i.state.label(),
+                "actionable": i.state.actionable(),
+            })
+        })
+        .collect();
+
     json!({
         "store": store.root().display().to_string(),
         "instructions": instructions,
+        "mcp": mcp,
         "clean": actionable == 0,
         "actionable": actionable,
         "targets": targets,

@@ -67,6 +67,20 @@ impl Outcome {
         self
     }
 
+    pub fn assert_stderr_lacks(&self, needle: &str) -> &Self {
+        assert!(
+            !self.stderr.contains(needle),
+            "expected stderr NOT to contain {needle:?}\nstderr:\n{}",
+            self.stderr
+        );
+        self
+    }
+
+    /// Neither stream may contain this text — used for secret canaries.
+    pub fn assert_no_output_contains(&self, needle: &str) -> &Self {
+        self.assert_stdout_lacks(needle).assert_stderr_lacks(needle)
+    }
+
     pub fn assert_stderr_empty(&self) -> &Self {
         assert!(
             self.stderr.is_empty(),
@@ -256,6 +270,47 @@ impl Fixture {
         }
         std::os::unix::fs::symlink(target, &p).expect("create symlink");
         self
+    }
+
+    /// Parse a home-relative JSON file.
+    pub fn json(&self, rel: &str) -> serde_json::Value {
+        let body = fs::read_to_string(self.home.join(rel))
+            .unwrap_or_else(|e| panic!("cannot read {rel}: {e}"));
+        serde_json::from_str(&body).unwrap_or_else(|e| panic!("{rel} is not JSON: {e}"))
+    }
+
+    /// Raw bytes of a home-relative file, as text.
+    pub fn contents(&self, rel: &str) -> String {
+        fs::read_to_string(self.home.join(rel)).unwrap_or_else(|e| panic!("cannot read {rel}: {e}"))
+    }
+
+    /// Unix permission bits of a home-relative file.
+    pub fn mode(&self, rel: &str) -> u32 {
+        use std::os::unix::fs::PermissionsExt;
+        fs::metadata(self.home.join(rel))
+            .unwrap_or_else(|e| panic!("cannot stat {rel}: {e}"))
+            .permissions()
+            .mode()
+            & 0o777
+    }
+
+    /// Write the Store's canonical MCP file.
+    pub fn store_mcp(&self, body: &str) -> &Self {
+        self.store_file("mcp.json", body)
+    }
+
+    /// Run with the standard overrides plus extra environment variables — the
+    /// only way a test can supply a `${env:VAR}` value, since the tool never
+    /// reads the real process environment.
+    pub fn run_with_env(&self, args: &[&str], extra: &[(&str, &str)]) -> Outcome {
+        let mut vars = vec![
+            ("AGENTSTOW_TARGET_ROOT", self.home.display().to_string()),
+            ("AGENTSTOW_HOME", self.store.display().to_string()),
+        ];
+        for (k, v) in extra {
+            vars.push((k, v.to_string()));
+        }
+        self.run_with_vars(args, &vars)
     }
 
     /// Snapshot of the whole home tree, for "nothing was created" assertions.
