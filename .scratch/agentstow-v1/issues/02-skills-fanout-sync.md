@@ -4,12 +4,12 @@
 
 **Blocked by:** 01 — Crate scaffold, test seam, target registry, `doctor`.
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] Fresh fixture: one canonical relative link per Store skill in each fan-out target; native targets (opencode, oh-my-pi) receive nothing
-- [ ] An absolute link resolving into the Store is rewritten to canonical relative form; a link resolving elsewhere is untouched
-- [ ] Dangling Store-pointing links are pruned; dangling Foreign links are left in place
-- [ ] A real directory colliding with a Store skill name is preserved unchanged (Variant)
-- [ ] A second `sync` is a byte-identical no-op and says so
-- [ ] `--dry-run` prints every planned action and modifies nothing
-- [ ] Two concurrent mutating invocations serialize on the lock; the loser waits or fails cleanly
+- [x] Fresh fixture: one canonical relative link per Store skill in each fan-out target; native targets (opencode, oh-my-pi) receive nothing
+- [x] An absolute link resolving into the Store is rewritten to canonical relative form; a link resolving elsewhere is untouched
+- [x] Dangling Store-pointing links are pruned; dangling Foreign links are left in place
+- [x] A real directory colliding with a Store skill name is preserved unchanged (Variant)
+- [x] A second `sync` is a byte-identical no-op and says so
+- [x] `--dry-run` prints every planned action and modifies nothing
+- [x] Two concurrent mutating invocations serialize on the lock; the loser waits or fails cleanly

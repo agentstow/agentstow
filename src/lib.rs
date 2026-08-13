@@ -12,9 +12,12 @@ use clap::Parser;
 pub mod cli;
 pub mod doctor;
 pub mod env;
+pub mod link;
+pub mod lock;
 pub mod registry;
 pub mod report;
 pub mod store;
+pub mod sync;
 
 /// Everything is in the state the Store describes.
 pub const EXIT_CLEAN: i32 = 0;
@@ -62,6 +65,7 @@ pub fn run(
     let mut reporter = report::Reporter::new(out, err);
 
     match parsed.command {
+        cli::Command::Sync { dry_run } => sync::run(&env, &mut reporter, dry_run),
         cli::Command::Doctor => doctor::run(&env, &mut reporter),
     }
 }

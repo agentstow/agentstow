@@ -7,6 +7,7 @@ name = "agentstow"
 version = "0.0.1"
 dependencies = [
  "clap",
+ "libc",
  "tempfile",
 ]
 

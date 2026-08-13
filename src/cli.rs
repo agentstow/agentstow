@@ -18,6 +18,12 @@ pub struct Cli {
 
 #[derive(Subcommand, Debug)]
 pub enum Command {
+    /// Fan the Store out to every installed agent.
+    Sync {
+        /// Report the plan without touching the filesystem.
+        #[arg(long)]
+        dry_run: bool,
+    },
     /// Check machine readiness: installed agents, Store usability, hygiene.
     Doctor,
 }

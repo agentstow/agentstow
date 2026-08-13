@@ -210,6 +210,54 @@ impl Fixture {
         }
     }
 
+    /// The verbatim text of a home-relative symlink.
+    pub fn link_text(&self, rel: &str) -> String {
+        fs::read_link(self.home.join(rel))
+            .unwrap_or_else(|e| panic!("{rel} is not a symlink: {e}"))
+            .display()
+            .to_string()
+    }
+
+    /// Whether a home-relative path is a symlink (without following it).
+    pub fn is_symlink(&self, rel: &str) -> bool {
+        fs::symlink_metadata(self.home.join(rel))
+            .map(|m| m.file_type().is_symlink())
+            .unwrap_or(false)
+    }
+
+    /// Whether a home-relative path exists as a real directory (not a link).
+    pub fn is_real_dir(&self, rel: &str) -> bool {
+        fs::symlink_metadata(self.home.join(rel))
+            .map(|m| m.is_dir())
+            .unwrap_or(false)
+    }
+
+    /// Whether a home-relative path exists at all (following links).
+    pub fn exists(&self, rel: &str) -> bool {
+        self.home.join(rel).exists()
+    }
+
+    /// Whether a home-relative path exists as a link or file, even if broken.
+    pub fn present(&self, rel: &str) -> bool {
+        fs::symlink_metadata(self.home.join(rel)).is_ok()
+    }
+
+    /// Where a home-relative symlink actually lands, following it.
+    pub fn resolves_to(&self, rel: &str) -> PathBuf {
+        fs::canonicalize(self.home.join(rel))
+            .unwrap_or_else(|e| panic!("{rel} does not resolve: {e}"))
+    }
+
+    /// Create a home-relative symlink with verbatim link text.
+    pub fn symlink(&self, rel: &str, target: &str) -> &Self {
+        let p = self.home.join(rel);
+        if let Some(parent) = p.parent() {
+            fs::create_dir_all(parent).expect("create parents");
+        }
+        std::os::unix::fs::symlink(target, &p).expect("create symlink");
+        self
+    }
+
     /// Snapshot of the whole home tree, for "nothing was created" assertions.
     /// Each entry is `kind:relative/path`, where kind is dir, file or link.
     pub fn tree(&self) -> BTreeSet<String> {
@@ -217,6 +265,29 @@ impl Fixture {
         walk(&self.home, &self.home, &mut acc);
         acc
     }
+}
+
+/// Hold the global lock the way a second agentstow process would, so a test can
+/// prove a concurrent run refuses rather than racing.
+pub struct HeldLock {
+    _file: fs::File,
+}
+
+pub fn hold_lock(path: PathBuf) -> HeldLock {
+    use std::os::unix::io::AsRawFd;
+
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent).expect("create lock dir");
+    }
+    let file = fs::OpenOptions::new()
+        .create(true)
+        .write(true)
+        .truncate(false)
+        .open(&path)
+        .expect("open lock file");
+    let rc = unsafe { libc::flock(file.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB) };
+    assert_eq!(rc, 0, "test could not take the lock");
+    HeldLock { _file: file }
 }
 
 fn walk(root: &Path, dir: &Path, acc: &mut BTreeSet<String>) {
