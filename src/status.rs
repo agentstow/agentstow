@@ -5,22 +5,23 @@
 
 use serde_json::{json, Value};
 
+use crate::config::Config;
 use crate::env::Env;
 use crate::link::{self, Item, State};
-use crate::registry;
 use crate::report::Reporter;
 use crate::store::{Store, FANOUT_FAMILIES};
+use crate::target;
 use crate::{EXIT_ACTIONABLE, EXIT_CLEAN, EXIT_ERROR};
 
 /// One Target directory's worth of survey results.
 struct TargetReport {
-    agent: &'static str,
+    agent: String,
     family: &'static str,
-    dir: &'static str,
+    dir: String,
     items: Vec<Item>,
 }
 
-pub fn run(env: &Env, r: &mut Reporter, as_json: bool) -> i32 {
+pub fn run(env: &Env, config: &Config, r: &mut Reporter, as_json: bool) -> i32 {
     let store = Store::new(env.store());
     if !store.exists() {
         r.problem(format!(
@@ -38,15 +39,15 @@ pub fn run(env: &Env, r: &mut Reporter, as_json: bool) -> i32 {
             r.warn(issue.to_string());
         }
 
-        for agent in registry::detected(env.home()) {
-            let Some(dir) = agent.fanout_dir(family) else {
+        for target in target::resolve(env, config) {
+            let Some(dir) = target.fanout_dir(family) else {
                 continue;
             };
             let items = link::survey(&env.in_home(dir), store.root(), &scan.entries);
             targets.push(TargetReport {
-                agent: agent.name,
+                agent: target.name.clone(),
                 family,
-                dir,
+                dir: dir.to_string(),
                 items,
             });
         }

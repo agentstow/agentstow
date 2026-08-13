@@ -3,15 +3,16 @@
 use std::path::Path;
 use std::time::Duration;
 
+use crate::config::Config;
 use crate::env::Env;
 use crate::link::{self, Item};
 use crate::lock;
-use crate::registry;
 use crate::report::Reporter;
 use crate::store::{Store, FANOUT_FAMILIES};
+use crate::target;
 use crate::{EXIT_CLEAN, EXIT_ERROR};
 
-pub fn run(env: &Env, r: &mut Reporter, dry_run: bool) -> i32 {
+pub fn run(env: &Env, config: &Config, r: &mut Reporter, dry_run: bool) -> i32 {
     let store = Store::new(env.store());
     if !store.exists() {
         r.problem(format!(
@@ -47,13 +48,13 @@ pub fn run(env: &Env, r: &mut Reporter, dry_run: bool) -> i32 {
             r.warn(issue.to_string());
         }
 
-        for agent in registry::detected(env.home()) {
-            let Some(dir) = agent.fanout_dir(family) else {
+        for target in target::resolve(env, config) {
+            let Some(dir) = target.fanout_dir(family) else {
                 continue;
             };
             let target_dir = env.in_home(dir);
             let items = link::survey(&target_dir, store.root(), &scan.entries);
-            changes += sync_target(agent.name, dir, &items, env.home(), r, dry_run);
+            changes += sync_target(&target.name, dir, &items, env.home(), r, dry_run);
         }
     }
 

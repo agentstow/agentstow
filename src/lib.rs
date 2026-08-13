@@ -10,6 +10,7 @@ use std::io::Write;
 use clap::Parser;
 
 pub mod cli;
+pub mod config;
 pub mod doctor;
 pub mod env;
 pub mod link;
@@ -19,6 +20,7 @@ pub mod report;
 pub mod status;
 pub mod store;
 pub mod sync;
+pub mod target;
 
 /// Everything is in the state the Store describes.
 pub const EXIT_CLEAN: i32 = 0;
@@ -63,11 +65,19 @@ pub fn run(
         }
     };
 
+    let config = match config::Config::load(env.config_dir()) {
+        Ok(c) => c,
+        Err(e) => {
+            let _ = writeln!(err, "error: {e}");
+            return EXIT_ERROR;
+        }
+    };
+
     let mut reporter = report::Reporter::new(out, err);
 
     match parsed.command {
-        cli::Command::Sync { dry_run } => sync::run(&env, &mut reporter, dry_run),
-        cli::Command::Status { json } => status::run(&env, &mut reporter, json),
-        cli::Command::Doctor => doctor::run(&env, &mut reporter),
+        cli::Command::Sync { dry_run } => sync::run(&env, &config, &mut reporter, dry_run),
+        cli::Command::Status { json } => status::run(&env, &config, &mut reporter, json),
+        cli::Command::Doctor => doctor::run(&env, &config, &mut reporter),
     }
 }

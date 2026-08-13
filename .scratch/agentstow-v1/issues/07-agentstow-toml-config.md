@@ -4,9 +4,9 @@
 
 **Blocked by:** 02 — Skills fan-out `sync`.
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] A disabled target disappears from `sync`, `status`, and `doctor` output entirely
-- [ ] A custom target with a root and skills path receives fan-out and appears in reports like any registry agent
-- [ ] Absent/empty config behaves identically to no config; malformed TOML → clear diagnostic on stderr, exit 1
-- [ ] The Store itself never gains a config file — tool configuration lives only under `~/.agentstow/`
+- [x] A disabled target disappears from `sync`, `status`, and `doctor` output entirely
+- [x] A custom target with a root and skills path receives fan-out and appears in reports like any registry agent
+- [x] Absent/empty config behaves identically to no config; malformed TOML → clear diagnostic on stderr, exit 1
+- [x] The Store itself never gains a config file — tool configuration lives only under `~/.agentstow/`

@@ -7,12 +7,14 @@
 use std::fs;
 use std::path::Path;
 
+use crate::config::Config;
 use crate::env::Env;
 use crate::registry;
 use crate::report::Reporter;
 use crate::store::{self, Store};
+use crate::target;
 
-pub fn run(env: &Env, r: &mut Reporter) -> i32 {
+pub fn run(env: &Env, config: &Config, r: &mut Reporter) -> i32 {
     let store = Store::new(env.store());
 
     r.line(format!("Store   {}", store.root().display()));
@@ -29,7 +31,7 @@ pub fn run(env: &Env, r: &mut Reporter) -> i32 {
         ));
     }
 
-    report_agents(env.home(), r);
+    report_agents(env, config, r);
 
     r.verdict()
 }
@@ -68,9 +70,10 @@ fn report_store(store: &Store, r: &mut Reporter) {
     }
 }
 
-fn report_agents(home: &Path, r: &mut Reporter) {
-    let detected = registry::detected(home);
-    let total = registry::AGENTS.len();
+fn report_agents(env: &Env, config: &Config, r: &mut Reporter) {
+    let home = env.home();
+    let detected = target::resolve(env, config);
+    let total = registry::AGENTS.len() + config.custom().len();
 
     r.line(format!("Detected agents ({} of {total}):", detected.len()));
     if detected.is_empty() {
@@ -89,7 +92,7 @@ fn report_agents(home: &Path, r: &mut Reporter) {
             r.line(format!("               {family}"));
         }
 
-        let root = agent.root_path(home);
+        let root = home.join(&agent.root);
         if is_readonly(&root) {
             r.problem(format!(
                 "{} config root is not writable: {}",

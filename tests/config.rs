@@ -1,0 +1,134 @@
+//! `~/.agentstow/agentstow.toml` — the only place agentstow's own settings live.
+
+mod common;
+
+use common::Fixture;
+
+fn config(f: &Fixture, body: &str) {
+    f.file(".agentstow/agentstow.toml", body);
+}
+
+#[test]
+fn a_disabled_target_disappears_everywhere() {
+    let f = Fixture::new();
+    f.agent(".claude");
+    f.agent(".cursor");
+    f.store_skill("research");
+    config(&f, "[targets]\ncursor = false\n");
+
+    f.run(&["sync"]).assert_clean();
+    assert!(f.is_symlink(".claude/skills/research"));
+    assert!(
+        !f.present(".cursor/skills/research"),
+        "a disabled target must not be synced"
+    );
+
+    f.run(&["status"]).assert_stdout_lacks("cursor");
+    f.run(&["doctor"]).assert_stdout_lacks("cursor");
+}
+
+#[test]
+fn a_custom_target_is_treated_like_any_other() {
+    let f = Fixture::new();
+    f.agent(".myagent");
+    f.store_skill("research");
+    config(
+        &f,
+        "[custom.myagent]\nroot = \".myagent\"\nskills = \".myagent/skills\"\n",
+    );
+
+    f.run(&["sync"]).assert_clean();
+
+    assert!(f.is_symlink(".myagent/skills/research"));
+    assert_eq!(
+        f.link_text(".myagent/skills/research"),
+        "../../.agents/skills/research"
+    );
+    f.run(&["doctor"])
+        .assert_clean()
+        .assert_stdout_has("myagent");
+}
+
+#[test]
+fn a_custom_target_that_is_not_installed_stays_inert() {
+    let f = Fixture::new();
+    f.store_skill("research");
+    config(
+        &f,
+        "[custom.myagent]\nroot = \".myagent\"\nskills = \".myagent/skills\"\n",
+    );
+
+    f.run(&["sync"]).assert_clean();
+
+    assert!(
+        !f.exists(".myagent"),
+        "config must not conjure an agent root into existence"
+    );
+}
+
+#[test]
+fn no_config_file_means_defaults() {
+    let f = Fixture::new();
+    f.agent(".claude");
+    f.store_skill("research");
+
+    f.run(&["sync"]).assert_clean();
+
+    assert!(f.is_symlink(".claude/skills/research"));
+}
+
+#[test]
+fn an_empty_config_file_means_defaults() {
+    let f = Fixture::new();
+    f.agent(".claude");
+    f.store_skill("research");
+    config(&f, "");
+
+    f.run(&["sync"]).assert_clean();
+
+    assert!(f.is_symlink(".claude/skills/research"));
+}
+
+#[test]
+fn malformed_toml_is_a_clear_error() {
+    let f = Fixture::new();
+    f.agent(".claude");
+    config(&f, "[targets\nbroken =\n");
+
+    f.run(&["sync"])
+        .assert_code(1)
+        .assert_stderr_has("agentstow.toml");
+}
+
+#[test]
+fn a_non_boolean_target_switch_is_rejected() {
+    let f = Fixture::new();
+    f.agent(".claude");
+    config(&f, "[targets]\nclaude = \"yes\"\n");
+
+    f.run(&["sync"])
+        .assert_code(1)
+        .assert_stderr_has("true or false");
+}
+
+#[test]
+fn a_custom_target_without_a_root_is_rejected() {
+    let f = Fixture::new();
+    config(&f, "[custom.myagent]\nskills = \".myagent/skills\"\n");
+
+    f.run(&["sync"]).assert_code(1).assert_stderr_has("root");
+}
+
+#[test]
+fn configuration_never_lands_in_the_store() {
+    let f = Fixture::new();
+    f.agent(".claude");
+    config(&f, "[targets]\ncursor = false\n");
+
+    f.run(&["sync"]).assert_clean();
+
+    assert!(
+        !f.store().join("agentstow.toml").exists(),
+        "the Store holds ecosystem content only"
+    );
+}

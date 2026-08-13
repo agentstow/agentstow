@@ -75,7 +75,10 @@ fn commands_do_not_reach_agents_that_need_rendering_or_have_no_surface() {
 #[test]
 fn subagents_reach_only_claude_and_opencode() {
     let f = machine();
-    f.store_file("subagents/reviewer.md", "---\nname: reviewer\n---\n\nreview\n");
+    f.store_file(
+        "subagents/reviewer.md",
+        "---\nname: reviewer\n---\n\nreview\n",
+    );
 
     f.run(&["sync"]).assert_clean();
 
