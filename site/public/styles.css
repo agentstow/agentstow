@@ -200,7 +200,7 @@ h1 {
   font-size: var(--as-type-display);
   line-height: var(--as-leading-display);
   letter-spacing: -0.03em;
-  max-width: 18ch;
+  max-width: 30ch;
 }
 
 h2 {

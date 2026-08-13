@@ -1,6 +1,6 @@
 # agentstow
 
-**GNU Stow for your AI coding agents.**
+**Canonical configs (skills, MCP, memory, etc.), fanned out to all your AI coding agents.**
 
 One Store at `~/.agents/` holds the single real copy of every config you share — skills,
 instructions, MCP servers, slash commands, subagents and hooks. `agentstow sync` fans it
