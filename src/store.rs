@@ -104,7 +104,8 @@ impl Store {
         self.scan(family, Shape::Markdown)
     }
 
-    fn scan(&self, family: &'static str, shape: Shape) -> Scan {
+    /// Scan one family directory according to its shape.
+    pub fn scan(&self, family: &'static str, shape: Shape) -> Scan {
         let dir = self.family_dir(family);
         let mut scan = Scan::default();
 
@@ -179,8 +180,15 @@ impl Store {
     }
 }
 
-#[derive(Clone, Copy)]
-enum Shape {
+/// What a family's Store entries look like on disk.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Shape {
+    /// One directory per entry (skills).
     Directory,
+    /// One markdown file per entry (commands, subagents).
     Markdown,
 }
+
+/// Every fan-out family, in report order. Adding a family is a row here plus a
+/// registry column — the sync and status loops are already generic over it.
+pub const FANOUT_FAMILIES: &[(&str, Shape)] = &[(SKILLS, Shape::Directory)];

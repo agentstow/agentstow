@@ -136,6 +136,27 @@ impl Agent {
         self.root_path(home).is_dir()
     }
 
+    /// The home-relative fan-out directory for a family, when this agent takes
+    /// symlinks for it. `None` covers native agents and absent surfaces alike —
+    /// both mean "do not fan out here".
+    pub fn fanout_dir(&self, family: &str) -> Option<&'static str> {
+        match family {
+            "skills" => match self.skills {
+                Skills::FanOut(dir) => Some(dir),
+                _ => None,
+            },
+            "commands" => match self.commands {
+                Commands::FanOut(dir) => Some(dir),
+                _ => None,
+            },
+            "subagents" => match self.subagents {
+                Subagents::FanOut(dir) => Some(dir),
+                _ => None,
+            },
+            _ => None,
+        }
+    }
+
     /// Human-readable capability summary, in family order.
     pub fn capabilities(&self) -> Vec<(&'static str, String)> {
         vec![

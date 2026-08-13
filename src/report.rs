@@ -31,6 +31,15 @@ impl<'a> Reporter<'a> {
         let _ = writeln!(self.out, "{}", text.as_ref());
     }
 
+    /// A machine-readable result — stdout, pretty-printed, newline-terminated.
+    pub fn json(&mut self, value: &serde_json::Value) {
+        let _ = writeln!(
+            self.out,
+            "{}",
+            serde_json::to_string_pretty(value).unwrap_or_else(|_| "{}".into())
+        );
+    }
+
     /// A blank result line.
     pub fn blank(&mut self) {
         let _ = writeln!(self.out);

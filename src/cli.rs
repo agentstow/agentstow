@@ -24,6 +24,12 @@ pub enum Command {
         #[arg(long)]
         dry_run: bool,
     },
+    /// Report what is in sync, what is not, and what is not ours.
+    Status {
+        /// Emit a machine-readable report on stdout.
+        #[arg(long)]
+        json: bool,
+    },
     /// Check machine readiness: installed agents, Store usability, hygiene.
     Doctor,
 }

@@ -4,9 +4,9 @@
 
 **Blocked by:** 02 — Skills fan-out `sync`.
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] Reports use CONTEXT.md vocabulary exactly (Store, Target, Variant, Foreign, dangling)
-- [ ] Identical Variant flagged re-linkable (content comparison); divergent Variant listed without warning tone
-- [ ] `--json` output parses and carries the same facts as the human report; diagnostics stay on stderr
-- [ ] Exit 2 iff at least one actionable state exists; 0 clean; 1 errors — verified through fixtures for all three
+- [x] Reports use CONTEXT.md vocabulary exactly (Store, Target, Variant, Foreign, dangling)
+- [x] Identical Variant flagged re-linkable (content comparison); divergent Variant listed without warning tone
+- [x] `--json` output parses and carries the same facts as the human report; diagnostics stay on stderr
+- [x] Exit 2 iff at least one actionable state exists; 0 clean; 1 errors — verified through fixtures for all three

@@ -4,11 +4,11 @@ use std::path::Path;
 use std::time::Duration;
 
 use crate::env::Env;
-use crate::link::{self, Act};
+use crate::link::{self, Item};
 use crate::lock;
-use crate::registry::{self, Agent, Skills};
+use crate::registry;
 use crate::report::Reporter;
-use crate::store::{self, Store};
+use crate::store::{Store, FANOUT_FAMILIES};
 use crate::{EXIT_CLEAN, EXIT_ERROR};
 
 pub fn run(env: &Env, r: &mut Reporter, dry_run: bool) -> i32 {
@@ -34,11 +34,6 @@ pub fn run(env: &Env, r: &mut Reporter, dry_run: bool) -> i32 {
         }
     };
 
-    let skills = store.scan_dirs(store::SKILLS);
-    for issue in &skills.issues {
-        r.warn(issue.to_string());
-    }
-
     if dry_run {
         r.line("dry run — no changes will be made");
         r.blank();
@@ -46,23 +41,28 @@ pub fn run(env: &Env, r: &mut Reporter, dry_run: bool) -> i32 {
 
     let mut changes = 0usize;
 
-    for agent in registry::detected(env.home()) {
-        let Skills::FanOut(dir) = agent.skills else {
-            continue;
-        };
-        let target_dir = env.in_home(dir);
-        let acts = link::plan(&target_dir, store.root(), &skills.entries);
-        changes += report_target(agent, &target_dir, &acts, env.home(), r, dry_run);
+    for (family, shape) in FANOUT_FAMILIES {
+        let scan = store.scan(family, *shape);
+        for issue in &scan.issues {
+            r.warn(issue.to_string());
+        }
+
+        for agent in registry::detected(env.home()) {
+            let Some(dir) = agent.fanout_dir(family) else {
+                continue;
+            };
+            let target_dir = env.in_home(dir);
+            let items = link::survey(&target_dir, store.root(), &scan.entries);
+            changes += sync_target(agent.name, dir, &items, env.home(), r, dry_run);
+        }
     }
 
     if changes == 0 {
         r.line("Everything is up to date.");
-    } else if dry_run {
-        r.blank();
-        r.line(format!("{changes} changes would be made."));
     } else {
         r.blank();
-        r.line(format!("{changes} changes made."));
+        let verb = if dry_run { "would be made" } else { "made" };
+        r.line(format!("{changes} changes {verb}."));
     }
 
     if r.problem_count() > 0 {
@@ -72,71 +72,53 @@ pub fn run(env: &Env, r: &mut Reporter, dry_run: bool) -> i32 {
     }
 }
 
-/// Report (and unless this is a dry run, apply) one Target's plan. Returns the
-/// number of mutating acts.
-fn report_target(
-    agent: &Agent,
-    target_dir: &Path,
-    acts: &[Act],
+/// Report — and unless this is a dry run, apply — one Target's items. Returns
+/// how many of them changed the filesystem.
+fn sync_target(
+    agent: &str,
+    dir: &str,
+    items: &[Item],
     home: &Path,
     r: &mut Reporter,
     dry_run: bool,
 ) -> usize {
-    if acts.is_empty() {
+    let interesting: Vec<&Item> = items
+        .iter()
+        .filter(|i| i.state != link::State::Linked)
+        .collect();
+    if interesting.is_empty() {
         return 0;
     }
 
-    let mut mutations = 0;
-    let mut header_written = false;
+    r.line(format!("{agent} ({dir})"));
+    let mut changed = 0;
 
-    for act in acts {
-        let rel = act
-            .path()
-            .strip_prefix(home)
-            .unwrap_or(act.path())
-            .display()
-            .to_string();
-
-        if !header_written {
+    for item in interesting {
+        let note = item.state.note();
+        if !item.state.needs_change() {
             r.line(format!(
-                "{} ({})",
-                agent.name,
-                display_dir(target_dir, home)
+                "  {:<9} {} — {note}",
+                item.state.label(),
+                item.name
             ));
-            header_written = true;
+            continue;
         }
 
-        match act {
-            Act::Variant { identical, .. } => {
-                if *identical {
-                    r.line(format!(
-                        "  variant  {rel} — identical to the Store, could be re-linked"
-                    ));
-                } else {
-                    r.line(format!("  variant  {rel} — left alone"));
-                }
-            }
-            Act::Foreign { .. } => {
-                r.line(format!("  foreign  {rel} — left alone"));
-            }
-            _ => {
-                mutations += 1;
-                if dry_run {
-                    r.line(format!("  {:<8} {rel}", act.verb()));
-                } else if let Err(e) = link::apply(act) {
-                    r.problem(format!("cannot {} {rel}: {e}", act.verb()));
-                } else {
-                    r.line(format!("  {:<8} {rel}", act.verb()));
-                }
-            }
+        if dry_run {
+            r.line(format!("  {:<9} {}", item.state.label(), item.name));
+            changed += 1;
+        } else if let Err(e) = link::apply(item) {
+            r.problem(format!(
+                "cannot fix {}: {e}",
+                item.path.strip_prefix(home).unwrap_or(&item.path).display()
+            ));
+        } else {
+            r.line(format!("  {:<9} {}", item.state.label(), item.name));
+            changed += 1;
         }
     }
 
-    mutations
-}
-
-fn display_dir(dir: &Path, home: &Path) -> String {
-    dir.strip_prefix(home).unwrap_or(dir).display().to_string()
+    changed
 }
 
 fn lock_timeout(env: &Env) -> Duration {

@@ -8,6 +8,10 @@
 //! Resolution here is deliberately lexical. A dangling link still has to be
 //! classified, and following it is impossible; comparing link text against the
 //! Store path textually gives the same answer for live and broken links alike.
+//!
+//! [`survey`] produces the whole picture of one Target directory; `sync` applies
+//! the items that need changing and `status` reports all of them, so both
+//! commands agree by construction.
 
 use std::collections::BTreeSet;
 use std::ffi::OsString;
@@ -93,10 +97,9 @@ pub fn relative_from(base: &Path, target: &Path) -> PathBuf {
     out
 }
 
-/// What agentstow found at one destination path.
+/// What agentstow found at one destination path, before deciding anything.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Found {
-    /// Nothing there.
+enum Found {
     Absent,
     /// A symlink pointing into the Store — ours.
     Ours {
@@ -105,28 +108,23 @@ pub enum Found {
         dangling: bool,
     },
     /// A symlink pointing anywhere else — Foreign.
-    Foreign { text: PathBuf },
+    Foreign,
     /// A real file or directory — a Variant, preserved unconditionally.
     Variant,
 }
 
-/// Classify a destination path against the Store.
-pub fn classify(path: &Path, store: &Path) -> Found {
-    let meta = match fs::symlink_metadata(path) {
-        Ok(m) => m,
-        Err(_) => return Found::Absent,
+fn classify(path: &Path, store: &Path) -> Found {
+    let Ok(meta) = fs::symlink_metadata(path) else {
+        return Found::Absent;
     };
-
     if !meta.file_type().is_symlink() {
         return Found::Variant;
     }
-
-    let text = match fs::read_link(path) {
-        Ok(t) => t,
-        Err(_) => return Found::Variant,
+    let Ok(text) = fs::read_link(path) else {
+        return Found::Variant;
     };
-    let resolved = resolve_link(path, &text);
 
+    let resolved = resolve_link(path, &text);
     if resolved.starts_with(normalize(store)) {
         Found::Ours {
             text,
@@ -134,102 +132,122 @@ pub fn classify(path: &Path, store: &Path) -> Found {
             dangling: !path.exists(),
         }
     } else {
-        Found::Foreign { text }
+        Found::Foreign
     }
 }
 
-/// One change (or one thing deliberately left alone) at a destination.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Act {
-    /// Create a canonical link.
-    Link { path: PathBuf, text: PathBuf },
-    /// Replace one of our links that is not in canonical form.
-    Relink {
-        path: PathBuf,
-        text: PathBuf,
-        was: PathBuf,
-    },
-    /// Remove one of our links whose Store entry is gone.
-    Prune { path: PathBuf },
-    /// A Variant shadowing a Store entry — reported, never touched.
-    Variant { path: PathBuf, identical: bool },
-    /// A Foreign entry in our way — reported, never touched.
-    Foreign { path: PathBuf },
+/// The state of one name in one Target directory.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum State {
+    /// A canonical link onto the right Store entry — nothing to do.
+    Linked,
+    /// The Store has this entry and the Target does not.
+    Missing,
+    /// Our link, but not in canonical form (absolute, or onto the wrong entry).
+    Stale,
+    /// Our link, pointing at a Store entry that no longer exists.
+    Dangling,
+    /// A real object shadowing a Store entry, byte-identical to it.
+    VariantIdentical,
+    /// A real object shadowing a Store entry, deliberately different.
+    VariantDiverged,
+    /// Not ours: a link resolving outside the Store.
+    Foreign,
 }
 
-impl Act {
-    /// Whether applying this act would change the filesystem.
-    pub fn mutates(&self) -> bool {
-        matches!(
-            self,
-            Act::Link { .. } | Act::Relink { .. } | Act::Prune { .. }
-        )
+impl State {
+    /// Whether `sync` changes the filesystem for this state.
+    pub fn needs_change(&self) -> bool {
+        matches!(self, State::Missing | State::Stale | State::Dangling)
     }
 
-    pub fn path(&self) -> &Path {
+    /// Whether the user has something to act on. A diverged Variant is a
+    /// settled decision, and a Foreign entry is somebody else's; neither is.
+    pub fn actionable(&self) -> bool {
+        self.needs_change() || matches!(self, State::VariantIdentical)
+    }
+
+    /// Stable word used in reports and `--json`.
+    pub fn label(&self) -> &'static str {
         match self {
-            Act::Link { path, .. }
-            | Act::Relink { path, .. }
-            | Act::Prune { path }
-            | Act::Variant { path, .. }
-            | Act::Foreign { path } => path,
+            State::Linked => "linked",
+            State::Missing => "missing",
+            State::Stale => "stale",
+            State::Dangling => "dangling",
+            State::VariantIdentical => "variant-identical",
+            State::VariantDiverged => "variant",
+            State::Foreign => "foreign",
         }
     }
 
-    /// Short verb for reports.
-    pub fn verb(&self) -> &'static str {
+    /// One-line explanation for the human report.
+    pub fn note(&self) -> &'static str {
         match self {
-            Act::Link { .. } => "link",
-            Act::Relink { .. } => "relink",
-            Act::Prune { .. } => "prune",
-            Act::Variant { .. } => "variant",
-            Act::Foreign { .. } => "foreign",
+            State::Linked => "",
+            State::Missing => "not linked yet",
+            State::Stale => "not in canonical form",
+            State::Dangling => "Store entry is gone",
+            State::VariantIdentical => "identical to the Store — could be re-linked",
+            State::VariantDiverged => "left alone",
+            State::Foreign => "not ours — left alone",
         }
     }
 }
 
-/// Plan the fan-out of `entries` into `target_dir`.
+/// One name in one Target directory, and what agentstow makes of it.
+#[derive(Debug, Clone)]
+pub struct Item {
+    pub name: String,
+    pub path: PathBuf,
+    pub state: State,
+    /// Canonical link text, when there is a Store entry to point at.
+    pub canonical: Option<PathBuf>,
+}
+
+/// Survey one Target directory against the Store entries destined for it.
 ///
-/// Pruning is limited to *dangling* links into the Store: a live link to a Store
-/// entry that simply is not being synced right now stays, because deleting it
-/// would be guessing.
-pub fn plan(target_dir: &Path, store: &Path, entries: &[Entry]) -> Vec<Act> {
-    let mut acts = Vec::new();
+/// Pruning is limited to *dangling* links into the Store: a live link onto a
+/// Store entry that simply is not being synced right now stays, because removing
+/// it would be guessing.
+pub fn survey(target_dir: &Path, store: &Path, entries: &[Entry]) -> Vec<Item> {
+    let mut items = Vec::new();
     let wanted: BTreeSet<&str> = entries.iter().map(|e| e.name.as_str()).collect();
 
     for entry in entries {
-        let dest = target_dir.join(&entry.name);
+        let path = target_dir.join(&entry.name);
         let canonical = relative_from(target_dir, &entry.path);
 
-        match classify(&dest, store) {
-            Found::Absent => acts.push(Act::Link {
-                path: dest,
-                text: canonical,
-            }),
+        let state = match classify(&path, store) {
+            Found::Absent => State::Missing,
             Found::Ours { text, resolved, .. } => {
-                let on_target = resolved == normalize(&entry.path);
-                if on_target && text == canonical {
-                    continue;
+                if resolved == normalize(&entry.path) && text == canonical {
+                    State::Linked
+                } else {
+                    State::Stale
                 }
-                acts.push(Act::Relink {
-                    path: dest,
-                    text: canonical,
-                    was: text,
-                });
             }
-            Found::Foreign { .. } => acts.push(Act::Foreign { path: dest }),
+            Found::Foreign => State::Foreign,
             Found::Variant => {
-                let identical = same_contents(&dest, &entry.path);
-                acts.push(Act::Variant {
-                    path: dest,
-                    identical,
-                })
+                if same_contents(&path, &entry.path) {
+                    State::VariantIdentical
+                } else {
+                    State::VariantDiverged
+                }
             }
-        }
+        };
+
+        items.push(Item {
+            name: entry.name.clone(),
+            path,
+            state,
+            canonical: Some(canonical),
+        });
     }
 
-    // Anything else in the directory: ours and dangling gets pruned, the rest
-    // is somebody else's business.
+    // Anything else in the directory. Our own dead links are ours to remove and
+    // links pointing elsewhere are worth naming, but a real file or directory
+    // here is simply the agent's own content — not a Variant of anything, and
+    // none of our business.
     if let Ok(read) = fs::read_dir(target_dir) {
         for found in read.flatten() {
             let name = found.file_name().to_string_lossy().into_owned();
@@ -237,32 +255,48 @@ pub fn plan(target_dir: &Path, store: &Path, entries: &[Entry]) -> Vec<Act> {
                 continue;
             }
             let path = found.path();
-            if let Found::Ours { dangling: true, .. } = classify(&path, store) {
-                acts.push(Act::Prune { path });
-            }
+            let state = match classify(&path, store) {
+                Found::Ours { dangling: true, .. } => State::Dangling,
+                Found::Foreign => State::Foreign,
+                _ => continue,
+            };
+            items.push(Item {
+                name,
+                path,
+                state,
+                canonical: None,
+            });
         }
     }
 
-    acts.sort_by(|a, b| a.path().cmp(b.path()));
-    acts
+    items.sort_by(|a, b| a.path.cmp(&b.path));
+    items
 }
 
-/// Apply one act. Creating a link creates the directories above it, but the
-/// caller is responsible for never handing us a path under an absent agent root.
-pub fn apply(act: &Act) -> io::Result<()> {
-    match act {
-        Act::Link { path, text } => {
-            if let Some(parent) = path.parent() {
+/// Bring one item to its canonical state. States that need no change, and
+/// everything that is not ours, are no-ops.
+pub fn apply(item: &Item) -> io::Result<()> {
+    match item.state {
+        State::Missing => {
+            let text = item
+                .canonical
+                .as_ref()
+                .expect("missing implies a Store entry");
+            if let Some(parent) = item.path.parent() {
                 fs::create_dir_all(parent)?;
             }
-            std::os::unix::fs::symlink(text, path)
+            std::os::unix::fs::symlink(text, &item.path)
         }
-        Act::Relink { path, text, .. } => {
-            fs::remove_file(path)?;
-            std::os::unix::fs::symlink(text, path)
+        State::Stale => {
+            let text = item
+                .canonical
+                .as_ref()
+                .expect("stale implies a Store entry");
+            fs::remove_file(&item.path)?;
+            std::os::unix::fs::symlink(text, &item.path)
         }
-        Act::Prune { path } => fs::remove_file(path),
-        Act::Variant { .. } | Act::Foreign { .. } => Ok(()),
+        State::Dangling => fs::remove_file(&item.path),
+        _ => Ok(()),
     }
 }
 
@@ -270,7 +304,10 @@ pub fn apply(act: &Act) -> io::Result<()> {
 /// accident of history rather than a deliberate divergence.
 fn same_contents(a: &Path, b: &Path) -> bool {
     match (a.is_dir(), b.is_dir()) {
-        (true, true) => dir_digest(a) == dir_digest(b),
+        (true, true) => match (dir_digest(a), dir_digest(b)) {
+            (Some(x), Some(y)) => x == y,
+            _ => false,
+        },
         (false, false) => match (fs::read(a), fs::read(b)) {
             (Ok(x), Ok(y)) => x == y,
             _ => false,

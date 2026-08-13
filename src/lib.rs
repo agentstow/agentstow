@@ -16,6 +16,7 @@ pub mod link;
 pub mod lock;
 pub mod registry;
 pub mod report;
+pub mod status;
 pub mod store;
 pub mod sync;
 
@@ -66,6 +67,7 @@ pub fn run(
 
     match parsed.command {
         cli::Command::Sync { dry_run } => sync::run(&env, &mut reporter, dry_run),
+        cli::Command::Status { json } => status::run(&env, &mut reporter, json),
         cli::Command::Doctor => doctor::run(&env, &mut reporter),
     }
 }
