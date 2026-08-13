@@ -217,10 +217,19 @@ pub fn survey(env: &Env, config: &Config, store_dir: &Path) -> Result<Survey, Er
             };
 
             let rendered = render(hook);
-            let current = find_by_command(&existing, native_event, &hook.command);
-            let state = match current {
+            // The matcher lives on the group, not the leaf, so comparing only
+            // the leaf would let a narrowed matcher silently keep firing on
+            // whatever the user wrote first.
+            let found = find_placement(&existing, native_event, &hook.command);
+            let state = match &found {
                 None => State::Missing,
-                Some(found) if found == rendered => State::Managed,
+                Some(found)
+                    if found.leaf == rendered
+                        && normalise(found.matcher.as_deref())
+                            == normalise(hook.matcher.as_deref()) =>
+                {
+                    State::Managed
+                }
                 Some(_) => State::Drifted,
             };
 
@@ -309,7 +318,12 @@ pub fn apply(path: &Path, root_key: &str, items: &[&Item]) -> Result<crate::mcp:
             });
         };
 
-        if !replace_by_command(groups, rendered) {
+        // Take it out of wherever it was, then put it where the Store says it
+        // belongs. Replacing in place would keep a stale matcher forever.
+        remove_by_command(groups, rendered);
+        if let Some(group) = group_with_matcher(groups, item.matcher.as_deref()) {
+            group.push(rendered.clone());
+        } else {
             // Ours goes in a group of its own rather than into somebody else's,
             // so their matcher and grouping stay exactly as they wrote them.
             let mut group = Map::new();
@@ -339,32 +353,73 @@ pub fn apply(path: &Path, root_key: &str, items: &[&Item]) -> Result<crate::mcp:
     })
 }
 
-/// Replace the hook object with this command, wherever it sits. Returns whether
-/// one was found.
-fn replace_by_command(groups: &mut [Value], rendered: &Value) -> bool {
+/// Take our hook out of every group it appears in, and drop any group we
+/// emptied doing so. Only elements matching our command are ever removed.
+fn remove_by_command(groups: &mut Vec<Value>, rendered: &Value) {
     let Some(command) = rendered.get("command") else {
-        return false;
+        return;
     };
     for group in groups.iter_mut() {
-        let Some(hooks) = group.get_mut("hooks").and_then(Value::as_array_mut) else {
+        if let Some(hooks) = group.get_mut("hooks").and_then(Value::as_array_mut) {
+            hooks.retain(|leaf| leaf.get("command") != Some(command));
+        }
+    }
+    // A group left empty was one we had just emptied: it held only our hook.
+    groups.retain(|group| {
+        group
+            .get("hooks")
+            .and_then(Value::as_array)
+            .map(|hooks| !hooks.is_empty())
+            .unwrap_or(true)
+    });
+}
+
+/// The hooks array of the first group carrying this matcher, if there is one.
+fn group_with_matcher<'g>(
+    groups: &'g mut [Value],
+    matcher: Option<&str>,
+) -> Option<&'g mut Vec<Value>> {
+    let wanted = normalise(matcher);
+    groups
+        .iter_mut()
+        .find(|group| {
+            normalise(group.get("matcher").and_then(Value::as_str)) == wanted
+                && group.get("hooks").and_then(Value::as_array).is_some()
+        })
+        .and_then(|group| group.get_mut("hooks").and_then(Value::as_array_mut))
+}
+
+/// Where a hook sits, and what its group says.
+struct Placement {
+    leaf: Value,
+    matcher: Option<String>,
+}
+
+/// An absent matcher and an empty one mean the same thing.
+fn normalise(matcher: Option<&str>) -> &str {
+    matcher.unwrap_or("")
+}
+
+/// The hook object with this command under this event, plus its group matcher.
+fn find_placement(existing: &Map<String, Value>, event: &str, command: &str) -> Option<Placement> {
+    let groups = existing.get(event)?.as_array()?;
+    for group in groups {
+        let Some(hooks) = group.get("hooks").and_then(Value::as_array) else {
             continue;
         };
-        for object in hooks.iter_mut() {
-            if object.get("command") == Some(command) {
-                *object = rendered.clone();
-                return true;
+        for leaf in hooks {
+            if leaf.get("command").and_then(Value::as_str) == Some(command) {
+                return Some(Placement {
+                    leaf: leaf.clone(),
+                    matcher: group
+                        .get("matcher")
+                        .and_then(Value::as_str)
+                        .map(str::to_string),
+                });
             }
         }
     }
-    false
-}
-
-/// The hook object with this command under this event, if any.
-fn find_by_command(existing: &Map<String, Value>, event: &str, command: &str) -> Option<Value> {
-    let groups = existing.get(event)?;
-    flatten(groups)
-        .into_iter()
-        .find(|object| object.get("command").and_then(Value::as_str) == Some(command))
+    None
 }
 
 /// Every hook object under one event, across all its groups.

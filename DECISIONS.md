@@ -304,3 +304,30 @@ reads more like session start than prompt submission, so the mapping is not
 clearly right. An unsupported event is reported out loud; a wrong mapping is
 silent. The conservative choice stands until Gemini's event semantics can be
 confirmed. The same applies to the claim that Codex has no `Notification` event.
+
+## 2026-08-13 — The matcher is part of what "managed" means for a hook
+
+Drift was decided by comparing the rendered leaf — type, command, timeout —
+but a hook's matcher lives on the enclosing *group*. So changing a Store hook's
+matcher from `Bash` to `Write` reported "Everything is up to date" and left the
+hook firing on `Bash`: a narrowing safety constraint the user had deliberately
+changed, silently ignored. The comparison now includes the group's matcher
+(absent and empty treated alike), and applying a change moves the hook into a
+group with the right matcher rather than editing in place.
+
+Moving removes only leaves whose command matches ours, and drops a group only
+when emptying it left it with nothing — so a foreign hook sharing our old group
+stays exactly where its owner put it.
+
+## 2026-08-13 — `init` deliberately does not create `hooks/`
+
+The other families' directories are created by `init` because an empty one is
+inert. An empty `hooks/` is not: the family treats directory presence as "the
+user adopted this", which is what makes a hook deleted from the Store report as
+a leftover. Creating it for everyone would show every user every other tool's
+hooks as Foreign. `doctor` reports the family as `absent` instead, and
+`hooks/<Event>.toml` is created by the user when they want it.
+
+`doctor` now also warns about non-`.toml` files in `hooks/`, which the family
+would otherwise skip in silence — the exact failure the Store hygiene scan was
+introduced to end.

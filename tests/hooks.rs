@@ -388,3 +388,108 @@ fn a_foreign_hooks_arguments_are_never_printed() {
         .unwrap_or("")
         .contains("sk-SECRET-abc")));
 }
+
+#[test]
+fn changing_the_matcher_moves_the_hook() {
+    let f = machine();
+    f.store_file(
+        "hooks/PreToolUse.toml",
+        "[[hook]]\nmatcher = \"Bash\"\ncommand = \"guard\"\n",
+    );
+    f.run(&["sync"]).assert_clean();
+
+    // A narrowing constraint the user changed must actually take effect.
+    f.store_file(
+        "hooks/PreToolUse.toml",
+        "[[hook]]\nmatcher = \"Write\"\ncommand = \"guard\"\n",
+    );
+    f.run(&["sync"]).assert_clean();
+
+    let groups = f.json(".claude/settings.json")["hooks"]["PreToolUse"]
+        .as_array()
+        .unwrap()
+        .clone();
+    let matchers: Vec<Option<&str>> = groups.iter().map(|g| g["matcher"].as_str()).collect();
+    assert!(
+        matchers.contains(&Some("Write")),
+        "the hook should now be under Write: {matchers:?}"
+    );
+    assert_eq!(
+        hooks_at(&f, ".claude/settings.json", "hooks", "PreToolUse").len(),
+        1,
+        "and not left behind under Bash as well"
+    );
+    assert!(
+        !matchers.contains(&Some("Bash")),
+        "the emptied group should be gone: {matchers:?}"
+    );
+}
+
+#[test]
+fn a_changed_matcher_is_reported_as_drift() {
+    let f = machine();
+    f.store_file(
+        "hooks/PreToolUse.toml",
+        "[[hook]]\nmatcher = \"Bash\"\ncommand = \"guard\"\n",
+    );
+    f.run(&["sync"]).assert_clean();
+    f.store_file(
+        "hooks/PreToolUse.toml",
+        "[[hook]]\nmatcher = \"Write\"\ncommand = \"guard\"\n",
+    );
+
+    f.run(&["status"])
+        .assert_code(2)
+        .assert_stdout_has("drifted");
+}
+
+#[test]
+fn moving_our_hook_leaves_a_foreign_sibling_where_it_was() {
+    let f = machine();
+    f.store_file(
+        "hooks/PreToolUse.toml",
+        "[[hook]]\nmatcher = \"Write\"\ncommand = \"guard\"\n",
+    );
+    // Ours starts in a group it shares with somebody else's hook.
+    f.file(
+        ".claude/settings.json",
+        r#"{"hooks": {"PreToolUse": [{"matcher": "Bash", "hooks": [
+             {"type": "command", "command": "guard"},
+             {"type": "command", "command": "theirs"}]}]}}"#,
+    );
+
+    f.run(&["sync"]).assert_clean();
+
+    let groups = f.json(".claude/settings.json")["hooks"]["PreToolUse"]
+        .as_array()
+        .unwrap()
+        .clone();
+    let bash = groups
+        .iter()
+        .find(|g| g["matcher"] == "Bash")
+        .expect("their group survives");
+    let commands: Vec<&str> = bash["hooks"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter_map(|h| h["command"].as_str())
+        .collect();
+    assert_eq!(commands, vec!["theirs"], "only ours was taken out");
+}
+
+#[test]
+fn doctor_knows_about_the_hooks_family() {
+    let f = machine();
+    one_hook(&f);
+
+    f.run(&["doctor"]).assert_clean().assert_stdout_has("hooks");
+}
+
+#[test]
+fn a_file_hooks_would_skip_is_warned_about() {
+    let f = machine();
+    one_hook(&f);
+    f.store_file("hooks/notes.md", "not a hook file\n");
+
+    f.run(&["doctor"]).assert_stderr_has("notes.md");
+}

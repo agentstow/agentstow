@@ -41,6 +41,16 @@ fn report_store(store: &Store, r: &mut Reporter) {
         .map(|family| (*family, store.scan(*family)))
         .collect();
 
+    let hooks = store.family_dir(store::HOOKS);
+    let hook_files: Vec<String> = std::fs::read_dir(&hooks)
+        .map(|entries| {
+            entries
+                .flatten()
+                .map(|e| e.file_name().to_string_lossy().into_owned())
+                .collect()
+        })
+        .unwrap_or_default();
+
     let instructions = if store.root().join(store::INSTRUCTIONS).exists() {
         "present"
     } else {
@@ -56,6 +66,12 @@ fn report_store(store: &Store, r: &mut Reporter) {
     for (family, scan) in &scans {
         r.line(format!("  {:<13} {}", family.name(), scan.entries.len()));
     }
+    if hooks.is_dir() {
+        let count = hook_files.iter().filter(|n| n.ends_with(".toml")).count();
+        r.line(format!("  hooks         {count}"));
+    } else {
+        r.line("  hooks         absent");
+    }
     r.line(format!("  AGENTS.md     {instructions}"));
     r.line(format!("  mcp.json      {mcp}"));
     r.blank();
@@ -64,6 +80,14 @@ fn report_store(store: &Store, r: &mut Reporter) {
         for issue in &scan.issues {
             r.warn(issue.to_string());
         }
+    }
+
+    // The hooks family reads `<Event>.toml` only, so anything else in there
+    // would be skipped in silence — the failure this tool exists to end.
+    for name in hook_files.iter().filter(|n| !n.ends_with(".toml")) {
+        r.warn(format!(
+            "store hooks/{name}: not a `<Event>.toml` file, skipped"
+        ));
     }
 }
 
