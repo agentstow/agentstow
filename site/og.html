@@ -1,0 +1,48 @@
+<!doctype html>
+<!-- Source for public/og.png. Deliberately outside public/ so it is never served.
+     Rasterise at 1200x630:
+       chrome --headless --screenshot=public/og.png --window-size=1200,630 og.html -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<link rel="stylesheet" href="public/styles.css">
+<style>
+  html, body { margin: 0; }
+  body {
+    width: 1200px; height: 630px;
+    border-top: 10px solid var(--as-accent);
+    padding: 76px 80px;
+    display: flex; flex-direction: column; justify-content: space-between;
+    background: var(--as-surface-primary);
+  }
+  .brandrow { display: flex; align-items: center; gap: 14px;
+              font-size: 32px; font-weight: 600; letter-spacing: -0.01em; }
+  h1 { font-size: 76px; line-height: 1.08; letter-spacing: -0.03em; max-width: 20ch; }
+  .sub { font-size: 28px; color: var(--as-text-secondary); margin-top: 20px; }
+  .foot { display: flex; justify-content: space-between; align-items: baseline; }
+  .foot .site { color: var(--as-accent); font-weight: 600; font-size: 24px; }
+  .foot .facts { font-family: var(--as-font-mono); font-size: 21px;
+                 color: var(--as-text-secondary); }
+</style>
+</head>
+<body>
+  <div class="brandrow">
+    <svg width="48" height="48" viewBox="0 0 20 20" fill="none">
+      <path d="M5 10h10M5 10l9-5M5 10l9 5" stroke="currentColor" stroke-width="1.25" opacity=".5"/>
+      <circle cx="4" cy="10" r="3" fill="currentColor"/>
+      <circle cx="16" cy="4" r="2.1" stroke="currentColor" stroke-width="1.25"/>
+      <circle cx="16" cy="10" r="2.1" stroke="currentColor" stroke-width="1.25"/>
+      <circle cx="16" cy="16" r="2.1" stroke="currentColor" stroke-width="1.25"/>
+    </svg>
+    agentstow
+  </div>
+  <div>
+    <h1>GNU Stow for your AI coding agents.</h1>
+    <div class="sub">One store. Ten agents. Six families of config. No state file.</div>
+  </div>
+  <div class="foot">
+    <span class="site">agentstow.dev</span>
+    <span class="facts">~/.agents · symlink fan-out · no state file</span>
+  </div>
+</body>
+</html>

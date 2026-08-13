@@ -1,0 +1,311 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>agentstow — GNU Stow for your AI coding agents</title>
+<meta name="description" content="One Store at ~/.agents/ syncs skills, instructions, MCP servers, slash commands, subagents and hooks to Claude Code, Codex, opencode, Cursor, Windsurf, Roo and more — symlinks where bytes can be identical, key-merge where they can't, and no state file.">
+<link rel="canonical" href="https://agentstow.dev/">
+<link rel="stylesheet" href="/styles.css">
+<link rel="icon" href="/favicon-32.png" sizes="32x32">
+<link rel="icon" href="/favicon-192.png" sizes="192x192">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://agentstow.dev/">
+<meta property="og:title" content="agentstow — GNU Stow for your AI coding agents">
+<meta property="og:description" content="One canonical store, ten agents, six families of config. Symlink fan-out, stateless key-merge, and nothing it doesn't own is ever touched.">
+<meta property="og:image" content="https://agentstow.dev/og.png">
+<meta name="twitter:card" content="summary_large_image">
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+
+<header class="masthead">
+  <div class="shell">
+    <a class="brand" href="/">
+      <svg width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+        <path d="M5 10h10M5 10l9-5M5 10l9 5" stroke="currentColor" stroke-width="1.25" opacity=".5"/>
+        <circle cx="4" cy="10" r="3" fill="currentColor"/>
+        <circle cx="16" cy="4" r="2.1" stroke="currentColor" stroke-width="1.25"/>
+        <circle cx="16" cy="10" r="2.1" stroke="currentColor" stroke-width="1.25"/>
+        <circle cx="16" cy="16" r="2.1" stroke="currentColor" stroke-width="1.25"/>
+      </svg>
+      agentstow
+    </a>
+    <nav>
+      <a href="/docs">Docs</a>
+      <a href="https://github.com/agentstow/agentstow">GitHub</a>
+    </nav>
+  </div>
+</header>
+
+<main id="main">
+
+  <section>
+    <div class="shell">
+      <h1>GNU Stow for your AI coding agents.</h1>
+      <p class="lede"><strong>One Store at <code>~/.agents/</code> holds the single real
+      copy of every config you share</strong> — skills, instructions, MCP servers, slash
+      commands, subagents, hooks. <code>agentstow sync</code> fans it out to all ten agents
+      you have installed: symlinks where the bytes can be identical, a rendered key-merge
+      where they can't. There is no state file, and there never will be.</p>
+
+<pre><span class="c"># the Store — one real copy of everything you share</span>
+~/.agents/
+├── <span class="k">skills/</span>          research/  tdd/  code-review/
+├── <span class="k">commands/</span>        ship.md  triage.md
+├── <span class="k">subagents/</span>       reviewer.md
+├── <span class="k">AGENTS.md</span>        your instructions, once
+├── <span class="k">mcp.json</span>         standard mcpServers shape
+└── <span class="k">hooks/</span>           SessionStart.toml  PreToolUse.toml</pre>
+
+      <div class="actions">
+        <a class="btn primary" href="/docs">Read the docs</a>
+        <a class="btn" href="https://github.com/agentstow/agentstow">View on GitHub</a>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="shell">
+      <p class="eyebrow">Fan-out</p>
+      <h2>Edit one file. Every agent sees it.</h2>
+      <div class="split">
+<pre><span class="c">$ ls -l ~/.claude/skills/</span>
+research    -> ../../.agents/skills/research
+tdd         -> ../../.agents/skills/tdd
+code-review -> ../../.agents/skills/code-review
+
+<span class="c">$ ls -l ~/.codex/skills/</span>
+research    -> ../../.agents/skills/research
+tdd         -> ../../.agents/skills/tdd
+code-review -> ../../.agents/skills/code-review</pre>
+        <div>
+          <p>A skill added to the Store appears in Claude Code, Codex, Cursor and pi as a
+          relative symlink — computed, not hand-typed, so the tree survives being moved or
+          restored somewhere else.</p>
+          <p>opencode and oh-my-pi already read <code>~/.agents/</code> themselves, so
+          agentstow deliberately writes nothing for them. A link of ours that dangles gets
+          pruned; a link pointing anywhere else is Foreign and is left alone.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="shell">
+      <p class="eyebrow">Two mechanisms</p>
+      <h2>Symlinked where it can be, rendered where it can't.</h2>
+      <p>Skills, instructions, commands and subagents can be byte-identical everywhere, so
+      they are one file seen from ten places — drift is impossible by construction. MCP
+      servers and hooks live inside files the agent also owns, in formats no two agents
+      share, so those are rendered and key-merged: your other keys are preserved, and only
+      the entries named in the Store are rewritten.</p>
+      <div class="split">
+<pre><span class="c"># ~/.agents/mcp.json — you write this once</span>
+{
+  "mcpServers": {
+    "serena": {
+      "type": "stdio",
+      "command": "uvx",
+      "args": ["--from", "serena-agent", "serena"]
+    }
+  }
+}</pre>
+<pre><span class="c"># ~/.codex/config.toml — merged, not replaced</span>
+model = "gpt-5.3-codex"        <span class="c"># untouched</span>
+
+[mcp_servers.serena]
+command = "uvx"
+args = ["--from", "serena-agent", "serena"]
+
+[projects."/Users/you/work"]   <span class="c"># untouched</span>
+trust_level = "trusted"</pre>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="shell">
+      <p class="eyebrow">No state</p>
+      <h2>The filesystem is the state.</h2>
+      <p>Other tools in this space copy, render, and remember what they own in a record
+      beside your configs. When that record disagrees with the disk, your hand-edits lose.
+      agentstow keeps no record at all, because ownership is legible from the disk
+      itself.</p>
+      <dl class="positions three">
+        <div>
+          <dt>Link identity</dt>
+          <dd>A symlink that resolves into the Store is ours. It gets canonicalised, and
+          pruned when it dangles.</dd>
+        </div>
+        <div>
+          <dt>Name identity</dt>
+          <dd>An MCP server, or a hook whose command appears in the Store, is ours. Every
+          other name in the same file is Foreign and survives untouched.</dd>
+        </div>
+        <div>
+          <dt>Marker identity</dt>
+          <dd>A wholly generated file carries one comment line saying so. Marked is ours;
+          unmarked was written by somebody else.</dd>
+        </div>
+      </dl>
+    </div>
+  </section>
+
+  <section>
+    <div class="shell">
+      <p class="eyebrow">Restraint</p>
+      <h2>Variants are a feature, not a conflict.</h2>
+      <div class="split">
+<pre><span class="c">$ agentstow status</span>
+claude (.claude/skills)  12 linked
+  variant           plannotator — left alone
+  variant-identical old-notes — identical to the
+                    Store, could be re-linked
+  foreign           vendor-thing — not ours
+
+mcp (mcp.json)
+  managed           serena → claude
+  foreign           xapi → claude — not in the
+                    Store — left alone
+
+2 items need attention — run `agentstow sync`.</pre>
+        <div>
+          <p>A real directory shadowing a Store entry is a <strong>Variant</strong>:
+          deliberate, preserved forever, and flagged only when its contents are identical
+          to the Store copy, so you can dedupe on purpose rather than by accident.</p>
+          <p>Anything agentstow did not write is Foreign — reported, never modified. Exit
+          codes are the contract: <code>0</code> clean, <code>1</code> error,
+          <code>2</code> something to do.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="agents">
+    <div class="shell">
+      <p class="eyebrow">Coverage</p>
+      <h2>Ten agents, six families.</h2>
+      <div class="scroller">
+        <table>
+          <thead>
+            <tr>
+              <th scope="col">Agent</th><th scope="col">Skills</th>
+              <th scope="col">Instructions</th><th scope="col">MCP</th>
+              <th scope="col">Commands</th><th scope="col">Subagents</th>
+              <th scope="col">Hooks</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr><th scope="row">Claude Code</th><td>fan-out</td><td>import-line</td><td>key-merge</td><td>fan-out</td><td>fan-out</td><td>key-merge</td></tr>
+            <tr><th scope="row">Codex</th><td>fan-out</td><td>symlink</td><td>key-merge (TOML)</td><td>fan-out</td><td class="none">none</td><td>key-merge</td></tr>
+            <tr><th scope="row">opencode</th><td>native</td><td>symlink</td><td>key-merge</td><td>fan-out</td><td>fan-out</td><td class="none">none</td></tr>
+            <tr><th scope="row">pi</th><td>fan-out</td><td>symlink</td><td class="none">none</td><td class="none">none</td><td class="none">none</td><td class="none">none</td></tr>
+            <tr><th scope="row">oh-my-pi</th><td>native</td><td>symlink</td><td>native</td><td>native</td><td class="none">none</td><td class="none">none</td></tr>
+            <tr><th scope="row">Gemini CLI</th><td class="none">none</td><td>symlink</td><td>key-merge</td><td>render</td><td class="none">none</td><td>key-merge</td></tr>
+            <tr><th scope="row">Cursor</th><td>fan-out</td><td class="none">none</td><td>key-merge</td><td>fan-out</td><td class="none">none</td><td class="none">none</td></tr>
+            <tr><th scope="row">Windsurf</th><td class="none">none</td><td>symlink</td><td>key-merge</td><td>fan-out</td><td class="none">none</td><td class="none">none</td></tr>
+            <tr><th scope="row">Roo</th><td class="none">none</td><td>rules-dir link</td><td class="none">none</td><td>fan-out</td><td class="none">none</td><td class="none">none</td></tr>
+            <tr><th scope="row">Cline</th><td class="none">none</td><td class="none">none</td><td>key-merge</td><td class="none">none</td><td class="none">none</td><td class="none">none</td></tr>
+          </tbody>
+        </table>
+        <caption>What each agent supports, and by which mechanism. <em>none</em> means that
+        agent has no such config surface — not that agentstow skipped it. <em>native</em>
+        means the agent reads the Store itself, so writing anything would only duplicate
+        it.</caption>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="shell">
+      <p class="eyebrow">Safety</p>
+      <h2>Safe to run before you trust it.</h2>
+<pre><span class="c">$ agentstow sync --dry-run</span>
+dry run — no changes will be made
+
+claude (.claude/skills)
+  missing   research
+  missing   tdd
+mcp (mcp.json)
+  missing   serena → codex — not in this agent's config yet
+
+3 changes would be made.</pre>
+      <dl class="positions">
+        <div>
+          <dt>A second sync is a no-op</dt>
+          <dd>Run it twice and the second run reports <em>Everything is up to date</em>
+          with the files byte-identical.</dd>
+        </div>
+        <div>
+          <dt>Every write is atomic</dt>
+          <dd>A private temp file, fsync, then an atomic rename — resolved through a
+          symlinked destination, so dotfiles wiring survives.</dd>
+        </div>
+        <div>
+          <dt>Secrets stay out of the Store and out of your terminal</dt>
+          <dd><code>${env:VAR}</code> is resolved at sync and redacted from every line of
+          output, so the Store stays committable.</dd>
+        </div>
+        <div>
+          <dt>It reports to CI</dt>
+          <dd><code>status --json</code> and <code>mcp list --json</code>, with exit code
+          <code>2</code> reserved for “there is something to do”.</dd>
+        </div>
+      </dl>
+    </div>
+  </section>
+
+  <section id="install">
+    <div class="shell">
+      <p class="eyebrow">Install</p>
+      <h2>macOS and Linux.</h2>
+<pre><span class="c"># prebuilt binary — no toolchain, no postinstall script</span>
+npm install -g agentstow
+
+<span class="c"># or from source, needs Rust 1.97+</span>
+cargo install agentstow
+
+<span class="c"># then, on a machine you have already been using</span>
+agentstow init</pre>
+      <p><code>init</code> creates the Store and then tells you what of your existing
+      config it could take over — per family, with the command that would do it.</p>
+    </div>
+  </section>
+
+  <section>
+    <div class="shell">
+      <p class="eyebrow">Limits</p>
+      <h2>What it does not do.</h2>
+      <div class="note warn">
+        <p><strong>No cross-machine sync.</strong> The Store is an ordinary directory —
+        version it with git or chezmoi. Building sync would mean building conflict
+        resolution, and git already won that.</p>
+        <p><strong>No memory sync.</strong> Agent memory is not a defined artifact, and
+        agentstow will not pretend otherwise.</p>
+        <p><strong>No Windows</strong>, no GUI, no daemon, no file watcher. It does not
+        install skills — it fans out whatever is in the Store, whoever put it there. There
+        is no <code>mcp add</code>, because adding a server is editing a documented
+        standard file.</p>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<footer>
+  <div class="shell">
+    <p class="closer">If agentstow disappeared tomorrow, your configs would still be
+    ordinary files in <code>~/.agents/</code>, and every link would still point at
+    them.</p>
+    <nav>
+      <a href="/docs">Documentation</a>
+      <a href="https://github.com/agentstow/agentstow">GitHub</a>
+      <a href="https://github.com/agentstow/agentstow/blob/main/LICENSE">MIT</a>
+    </nav>
+  </div>
+</footer>
+
+</body>
+</html>

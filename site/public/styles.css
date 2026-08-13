@@ -1,0 +1,520 @@
+/* agentstow.dev
+ *
+ * Structured after vercel.com/design.md — precise, calm, evidence-led,
+ * restrained. Three deliberate departures, all because that document is written
+ * to establish *Vercel* authorship on Vercel-authored pages:
+ *
+ *   - Geist is replaced by the platform sans/mono stack. The type *system* —
+ *     roles, scale, weights, leading, a 64ch measure — is applied verbatim on
+ *     top of it. No webfonts, no build step, no JavaScript: the same discipline
+ *     the product follows, and what lets public/_headers declare
+ *     `script-src 'none'` honestly.
+ *   - "Design in monochrome" is read as a single warm ramp rather than a grey
+ *     one. Accent is spent on exactly four things — link text, the one primary
+ *     action, the focus ring, and the hairline on the mark — and never on
+ *     backgrounds, table cells, or state.
+ *   - agentstow has no web UI to inherit a palette from, so the ramp is defined
+ *     here and the favicon and og artwork derive from it.
+ *
+ * Hard rejects honoured literally: no gradients, gradient text, glows, blobs,
+ * stripes, textures, grid backgrounds, glass, or ornamental shadows. Default to
+ * stillness. Hierarchy through typography first, then surfaces. Code samples
+ * are dimmed and weighted, never colour-coded, so they survive greyscale.
+ */
+
+:root {
+  /* ---- surfaces ---- */
+  --as-surface-primary: #faf9f7;
+  --as-surface-secondary: #ffffff;
+  /* Earned, not decorative: used only where a sample needs to sit apart. */
+  --as-surface-emphasis: #f2efe9;
+
+  /* ---- text ---- */
+  --as-text-primary: #1b1a18;
+  --as-text-secondary: #6a655e;
+  --as-text-on-accent: #faf9f7;
+
+  /* ---- borders ---- */
+  --as-border-subtle: #eae6de;
+  --as-border-default: #e2ddd4;
+
+  /* ---- the one hue ---- */
+  --as-accent: #2f6a58;
+  --as-focus: #2f6a58;
+  --as-color-warning: #8a6d1f;
+
+  /* ---- type ---- */
+  --as-font-sans: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI",
+    Roboto, Helvetica, Arial, sans-serif;
+  --as-font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas,
+    "Liberation Mono", monospace;
+
+  --as-type-display: clamp(2rem, 1.35rem + 2.6vw, 2.6rem);
+  --as-type-page-title: 1.75rem;
+  --as-type-title: 1.35rem;
+  --as-type-section: 1.05rem;
+  --as-type-body: 1rem;
+  --as-type-compact: 0.9375rem;
+  --as-type-label: 0.8125rem;
+
+  --as-weight-regular: 400;
+  --as-weight-medium: 500;
+  --as-weight-heading: 600;
+
+  --as-leading-display: 1.1;
+  --as-leading-title: 1.25;
+  --as-leading-section: 1.35;
+  --as-leading-body: 1.6;
+
+  /* ---- space, on a 4px base ---- */
+  --as-space-1: 0.25rem;
+  --as-space-2: 0.5rem;
+  --as-space-3: 0.75rem;
+  --as-space-4: 1rem;
+  --as-space-5: 1.25rem;
+  --as-space-6: 1.5rem;
+  --as-space-8: 2rem;
+  --as-space-10: 2.5rem;
+  --as-space-12: 3rem;
+  --as-space-16: 4rem;
+
+  --as-radius-small: 5px;
+  --as-radius: 10px;
+
+  --as-shell: 66rem;
+  /* Only the capability matrix uses this: six columns plus a row header need
+   * more than the reading shell before horizontal scroll kicks in. */
+  --as-shell-wide: 78rem;
+  --as-measure: 64ch;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --as-surface-primary: #15161a;
+    --as-surface-secondary: #1d1f24;
+    --as-surface-emphasis: #23252b;
+    --as-text-primary: #eae8e3;
+    --as-text-secondary: #979289;
+    --as-text-on-accent: #15161a;
+    --as-border-subtle: #24262d;
+    --as-border-default: #303339;
+    --as-accent: #7cc0ac;
+    --as-focus: #7cc0ac;
+    --as-color-warning: #d8bb66;
+  }
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--as-surface-primary);
+  color: var(--as-text-primary);
+  font-family: var(--as-font-sans);
+  font-size: var(--as-type-body);
+  line-height: var(--as-leading-body);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ---------------------------------------------------------------- shell ---- */
+
+.shell {
+  width: 100%;
+  max-width: var(--as-shell);
+  margin: 0 auto;
+  padding: 0 var(--as-space-6);
+}
+
+main section {
+  padding: var(--as-space-12) 0;
+}
+
+main section + section {
+  /* Sections are separated by space, not rules. */
+  padding-top: 0;
+}
+
+section[id] {
+  scroll-margin-top: 4.25rem;
+}
+
+/* --------------------------------------------------------------- header ---- */
+
+.masthead {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  background: var(--as-surface-primary);
+  /* The one border that earns itself: it separates scrolling content. */
+  border-bottom: 1px solid var(--as-border-subtle);
+}
+
+.masthead .shell {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--as-space-6);
+  height: 3.75rem;
+}
+
+.brand {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--as-space-2);
+  font-weight: var(--as-weight-heading);
+  color: var(--as-text-primary);
+  text-decoration: none;
+  letter-spacing: -0.01em;
+}
+
+.brand svg {
+  display: block;
+}
+
+.masthead nav {
+  display: flex;
+  align-items: center;
+  gap: var(--as-space-5);
+  font-size: var(--as-type-compact);
+}
+
+/* ----------------------------------------------------------- typography ---- */
+
+h1,
+h2,
+h3 {
+  font-weight: var(--as-weight-heading);
+  letter-spacing: -0.02em;
+  margin: 0;
+}
+
+h1 {
+  font-size: var(--as-type-display);
+  line-height: var(--as-leading-display);
+  letter-spacing: -0.03em;
+  max-width: 18ch;
+}
+
+h2 {
+  font-size: var(--as-type-page-title);
+  line-height: var(--as-leading-title);
+  max-width: 24ch;
+}
+
+h3 {
+  font-size: var(--as-type-section);
+  line-height: var(--as-leading-section);
+}
+
+p {
+  margin: var(--as-space-4) 0 0;
+  max-width: var(--as-measure);
+}
+
+.lede {
+  font-size: 1.125rem;
+  color: var(--as-text-secondary);
+  margin-top: var(--as-space-5);
+}
+
+.lede strong {
+  color: var(--as-text-primary);
+  font-weight: var(--as-weight-medium);
+}
+
+.eyebrow {
+  font-size: var(--as-type-label);
+  font-weight: var(--as-weight-medium);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--as-text-secondary);
+  margin: 0 0 var(--as-space-3);
+}
+
+a {
+  color: var(--as-accent);
+  text-underline-offset: 0.2em;
+}
+
+a:hover {
+  text-decoration-thickness: 2px;
+}
+
+:focus-visible {
+  outline: 2px solid var(--as-focus);
+  outline-offset: 2px;
+  border-radius: var(--as-radius-small);
+}
+
+code {
+  font-family: var(--as-font-mono);
+  font-size: 0.9em;
+}
+
+p code,
+li code,
+dd code,
+td code {
+  background: var(--as-surface-emphasis);
+  padding: 0.1em 0.35em;
+  border-radius: var(--as-radius-small);
+}
+
+/* ---------------------------------------------------------------- code ---- */
+
+pre {
+  margin: var(--as-space-5) 0 0;
+  padding: var(--as-space-4) var(--as-space-5);
+  background: var(--as-surface-secondary);
+  border: 1px solid var(--as-border-subtle);
+  border-radius: var(--as-radius);
+  overflow-x: auto;
+  font-family: var(--as-font-mono);
+  font-size: 0.875rem;
+  line-height: 1.65;
+}
+
+/* Weight and dimming only — no colour, so it survives greyscale. */
+pre .c {
+  color: var(--as-text-secondary);
+}
+
+pre .k {
+  font-weight: var(--as-weight-heading);
+}
+
+/* --------------------------------------------------------------- layout ---- */
+
+.split {
+  display: grid;
+  grid-template-columns: minmax(0, 33rem) minmax(0, 1fr);
+  gap: var(--as-space-8);
+  align-items: start;
+  margin-top: var(--as-space-6);
+}
+
+.split > div > p:first-child {
+  margin-top: 0;
+}
+
+.positions {
+  display: grid;
+  gap: var(--as-space-6);
+  margin: var(--as-space-8) 0 0;
+}
+
+@media (min-width: 52rem) {
+  .positions.three {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+.positions dt {
+  font-weight: var(--as-weight-heading);
+  letter-spacing: -0.01em;
+}
+
+.positions dd {
+  margin: var(--as-space-2) 0 0;
+  color: var(--as-text-secondary);
+  max-width: var(--as-measure);
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--as-space-3);
+  margin-top: var(--as-space-8);
+}
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.6rem 1.1rem;
+  border-radius: var(--as-radius-small);
+  border: 1px solid var(--as-border-default);
+  font-size: var(--as-type-compact);
+  font-weight: var(--as-weight-medium);
+  text-decoration: none;
+  color: var(--as-text-primary);
+}
+
+.btn.primary {
+  background: var(--as-accent);
+  border-color: var(--as-accent);
+  color: var(--as-text-on-accent);
+}
+
+/* --------------------------------------------------------------- tables ---- */
+
+.scroller {
+  margin: var(--as-space-6) 0 0;
+  overflow-x: auto;
+}
+
+table {
+  border-collapse: collapse;
+  width: 100%;
+  font-size: var(--as-type-compact);
+}
+
+caption {
+  caption-side: bottom;
+  margin-top: var(--as-space-3);
+  color: var(--as-text-secondary);
+  font-size: var(--as-type-label);
+  text-align: left;
+  max-width: var(--as-measure);
+}
+
+th,
+td {
+  /* Text left, per the source document; there are no numeric columns here. */
+  text-align: left;
+  padding: var(--as-space-3) var(--as-space-4) var(--as-space-3) 0;
+  border-bottom: 1px solid var(--as-border-subtle);
+  vertical-align: top;
+  white-space: nowrap;
+}
+
+thead th {
+  font-weight: var(--as-weight-medium);
+  color: var(--as-text-secondary);
+  font-size: var(--as-type-label);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+tbody th {
+  font-weight: var(--as-weight-medium);
+}
+
+td.none {
+  color: var(--as-text-secondary);
+}
+
+/* ---------------------------------------------------------------- notes ---- */
+
+.note {
+  margin: var(--as-space-6) 0 0;
+  padding-left: var(--as-space-4);
+  border-left: 2px solid var(--as-border-default);
+  color: var(--as-text-secondary);
+  max-width: var(--as-measure);
+}
+
+.note p:first-child {
+  margin-top: 0;
+}
+
+/* Colour is never the only cue: every warn note names its limit in words. */
+.note.warn {
+  border-left-color: var(--as-color-warning);
+}
+
+/* --------------------------------------------------------------- footer ---- */
+
+footer {
+  border-top: 1px solid var(--as-border-subtle);
+  margin-top: var(--as-space-16);
+  padding: var(--as-space-8) 0 var(--as-space-12);
+  color: var(--as-text-secondary);
+  font-size: var(--as-type-compact);
+}
+
+footer .closer {
+  color: var(--as-text-primary);
+  max-width: var(--as-measure);
+  margin: 0 0 var(--as-space-6);
+}
+
+footer nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--as-space-5);
+}
+
+/* ------------------------------------------------------------ utilities ---- */
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.skip {
+  position: absolute;
+  left: var(--as-space-4);
+  top: -3rem;
+  background: var(--as-surface-secondary);
+  border: 1px solid var(--as-border-default);
+  border-radius: var(--as-radius-small);
+  padding: var(--as-space-2) var(--as-space-4);
+  z-index: 20;
+}
+
+.skip:focus {
+  top: var(--as-space-2);
+}
+
+/* Docs-only: the table of contents and dense definition lists. */
+.toc {
+  margin: var(--as-space-6) 0 0;
+  padding: 0;
+  list-style: none;
+  columns: 2;
+  column-gap: var(--as-space-8);
+  font-size: var(--as-type-compact);
+}
+
+.toc li {
+  margin-bottom: var(--as-space-2);
+  break-inside: avoid;
+}
+
+.terms dt {
+  font-weight: var(--as-weight-heading);
+  margin-top: var(--as-space-5);
+}
+
+.terms dd {
+  margin: var(--as-space-1) 0 0;
+  color: var(--as-text-secondary);
+  max-width: var(--as-measure);
+}
+
+@media (max-width: 52rem) {
+  .split {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .toc {
+    columns: 1;
+  }
+
+  h1 {
+    max-width: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
