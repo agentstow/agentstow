@@ -453,3 +453,22 @@ Both macOS targets now build on `macos-latest`. rustc cross-compiles
 `x86_64-apple-darwin` from Apple silicon using the SDK already on the runner,
 so nothing else is needed, and a single label cannot be retired out from under
 one architecture while leaving the other working.
+
+## 2026-08-13 — The deploy token is scoped to one zone, not all three
+
+`CF_DEPLOY_TOKEN` carries Workers Scripts: Edit on the account, plus Workers
+Routes: Edit and Zone: Read on `agentstow.dev` alone. It cannot see or change
+`agentstow.com` and `agentstow.org`, which is a deliberate narrowing rather than
+an oversight: those two zones hold only the canonical-host redirect rulesets,
+those rules are static, and nothing in the deploy path rewrites them. Granting
+CI the ruleset scope on all three zones would widen a secret that any workflow
+on the repo can read, in exchange for an ability the workflow never exercises.
+
+The `max-permissions-cli` token in `~/.zshenv` was not reused for the same
+reason — full account access should not be reachable from CI.
+
+The scopes are confirmed sufficient by run `31746869454` deploying green, not by
+reading the table. An under-scoped token would still pass the workflow's
+`refuse to deploy without a token` guard, which only checks the secret is
+non-empty; it would fail later inside `wrangler deploy`. The guard proves
+presence, the run proves permission.

@@ -70,6 +70,15 @@ reused here, because a secret readable by any workflow should not carry full acc
 
 Then `gh secret set CF_DEPLOY_TOKEN --repo agentstow/agentstow`.
 
+Created and stored 2026-08-13; run `31746869454` (`workflow_dispatch`) deployed green in 18s,
+which is what proves the three scopes above are sufficient — an under-scoped token fails in
+`wrangler deploy`, not at the `refuse to deploy without a token` guard.
+
+> **Scope note.** This token can publish the Worker and manage routes on `agentstow.dev`. It
+> deliberately cannot touch the redirect rulesets on `agentstow.com` / `.org` — those rules are
+> static and CI never rewrites them. Managing them from CI would need `Zone · Zone WAF` (or
+> Rulesets) `Edit` on all three zones, which is a far broader secret for no gain.
+
 ### Why not Workers Builds
 
 Cloudflare's own CI would avoid the token entirely, but connecting a repo to it is
