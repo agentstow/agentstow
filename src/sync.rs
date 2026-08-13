@@ -5,6 +5,7 @@ use std::path::{Path, PathBuf};
 use crate::config::Config;
 use crate::env::Env;
 use crate::family::Family;
+use crate::hooks;
 use crate::instructions;
 use crate::link::{self, Item};
 use crate::lock;
@@ -70,6 +71,16 @@ pub fn run(env: &Env, config: &Config, r: &mut Reporter, dry_run: bool) -> i32 {
         }
     }
 
+    // Hooks run after MCP because Gemini keeps both in one settings file, and
+    // each family re-reads it before merging.
+    match sync_hooks(env, config, &store, r, dry_run) {
+        Ok(n) => changes += n,
+        Err(e) => {
+            r.problem(e.to_string());
+            return EXIT_ERROR;
+        }
+    }
+
     if changes == 0 && r.problem_count() == 0 {
         r.line("Everything is up to date.");
     } else if changes == 0 {
@@ -87,6 +98,87 @@ pub fn run(env: &Env, config: &Config, r: &mut Reporter, dry_run: bool) -> i32 {
     } else {
         EXIT_CLEAN
     }
+}
+
+/// The hooks family: command-hooks merged into each agent's hook arrays.
+fn sync_hooks(
+    env: &Env,
+    config: &Config,
+    store: &Store,
+    r: &mut Reporter,
+    dry_run: bool,
+) -> Result<usize, hooks::Error> {
+    let store_dir = store.family_dir(store::HOOKS);
+    let survey = hooks::survey(env, config, &store_dir)?;
+    for skipped in &survey.skipped {
+        r.problem(skipped.clone());
+    }
+
+    let noteworthy: Vec<&hooks::Item> = survey
+        .items
+        .iter()
+        .filter(|i| i.state != hooks::State::Managed)
+        .collect();
+    if noteworthy.is_empty() {
+        return Ok(0);
+    }
+
+    r.line("hooks");
+    for item in &noteworthy {
+        r.line(format!(
+            "  {:<12} {} {} → {} — {}",
+            item.state.label(),
+            item.event,
+            short(&item.label),
+            item.target,
+            item.note()
+        ));
+    }
+
+    let changing: Vec<&hooks::Item> = noteworthy
+        .into_iter()
+        .filter(|i| i.state.needs_change())
+        .collect();
+    if changing.is_empty() || dry_run {
+        return Ok(changing.len());
+    }
+
+    let mut by_file: Vec<(PathBuf, Vec<&hooks::Item>)> = Vec::new();
+    for item in changing.iter().copied() {
+        match by_file.iter_mut().find(|(path, _)| path == &item.path) {
+            Some((_, group)) => group.push(item),
+            None => by_file.push((item.path.clone(), vec![item])),
+        }
+    }
+
+    let mut written = 0usize;
+    for (path, group) in &by_file {
+        match hooks::apply(path, group[0].root_key, group) {
+            Ok(report) => {
+                written += group.len();
+                if report.exposed {
+                    r.warn(format!(
+                        "{} has mode {:o} — it now holds resolved secrets and can be read by others",
+                        report.path.display(),
+                        report.mode
+                    ));
+                }
+            }
+            Err(e) => r.problem(e.to_string()),
+        }
+    }
+
+    Ok(written)
+}
+
+/// A command, shortened for a report line. Never resolved.
+fn short(command: &str) -> String {
+    const MAX: usize = 40;
+    if command.chars().count() <= MAX {
+        return command.to_string();
+    }
+    let head: String = command.chars().take(MAX - 1).collect();
+    format!("{head}…")
 }
 
 /// The MCP family: one Store file, rendered and key-merged per agent.

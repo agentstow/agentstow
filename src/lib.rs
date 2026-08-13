@@ -16,6 +16,7 @@ pub mod config_edit;
 pub mod doctor;
 pub mod env;
 pub mod family;
+pub mod hooks;
 pub mod init;
 pub mod instructions;
 pub mod link;

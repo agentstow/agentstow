@@ -8,6 +8,7 @@ use serde_json::{json, Value};
 use crate::config::Config;
 use crate::env::Env;
 use crate::family::Family;
+use crate::hooks;
 use crate::instructions;
 use crate::link::{self, Item, State};
 use crate::mcp;
@@ -72,6 +73,18 @@ pub fn run(env: &Env, config: &Config, r: &mut Reporter, as_json: bool) -> i32 {
     }
     let mcp_items = mcp_survey.items;
 
+    let hook_survey = match hooks::survey(env, config, &store.family_dir(store::HOOKS)) {
+        Ok(survey) => survey,
+        Err(e) => {
+            r.problem(e.to_string());
+            return EXIT_ERROR;
+        }
+    };
+    for skipped in &hook_survey.skipped {
+        r.problem(skipped.clone());
+    }
+    let hook_items = hook_survey.items;
+
     let actionable: usize = targets
         .iter()
         .flat_map(|t| &t.items)
@@ -81,7 +94,8 @@ pub fn run(env: &Env, config: &Config, r: &mut Reporter, as_json: bool) -> i32 {
             .iter()
             .filter(|i| i.state.actionable())
             .count()
-        + mcp_items.iter().filter(|i| i.state.actionable()).count();
+        + mcp_items.iter().filter(|i| i.state.actionable()).count()
+        + hook_items.iter().filter(|i| i.state.actionable()).count();
 
     if as_json {
         r.json(&as_value(
@@ -89,10 +103,18 @@ pub fn run(env: &Env, config: &Config, r: &mut Reporter, as_json: bool) -> i32 {
             &targets,
             &instruction_items,
             &mcp_items,
+            &hook_items,
             actionable,
         ));
     } else {
-        human(&targets, &instruction_items, &mcp_items, actionable, r);
+        human(
+            &targets,
+            &instruction_items,
+            &mcp_items,
+            &hook_items,
+            actionable,
+            r,
+        );
     }
 
     if r.problem_count() > 0 {
@@ -108,6 +130,7 @@ fn human(
     targets: &[TargetReport],
     instruction_items: &[instructions::Item],
     mcp_items: &[mcp::Item],
+    hook_items: &[hooks::Item],
     actionable: usize,
     r: &mut Reporter,
 ) {
@@ -170,6 +193,19 @@ fn human(
         }
     }
 
+    if !hook_items.is_empty() {
+        r.line("hooks");
+        for item in hook_items {
+            let note = item.note();
+            let name = format!("{} {} → {}", item.event, item.label, item.target);
+            if note.is_empty() {
+                r.line(format!("  {:<17} {name}", item.state.label()));
+            } else {
+                r.line(format!("  {:<17} {name} — {note}", item.state.label()));
+            }
+        }
+    }
+
     r.blank();
     if actionable == 0 {
         r.line("Everything is in sync.");
@@ -185,6 +221,7 @@ fn as_value(
     targets: &[TargetReport],
     instruction_items: &[instructions::Item],
     mcp_items: &[mcp::Item],
+    hook_items: &[hooks::Item],
     actionable: usize,
 ) -> Value {
     let targets: Vec<Value> = targets
@@ -233,10 +270,24 @@ fn as_value(
         })
         .collect();
 
+    let hooks: Vec<Value> = hook_items
+        .iter()
+        .map(|i| {
+            json!({
+                "agent": i.target,
+                "event": i.event,
+                "hook": i.label,
+                "state": i.state.label(),
+                "actionable": i.state.actionable(),
+            })
+        })
+        .collect();
+
     json!({
         "store": store.root().display().to_string(),
         "instructions": instructions,
         "mcp": mcp,
+        "hooks": hooks,
         "clean": actionable == 0,
         "actionable": actionable,
         "targets": targets,

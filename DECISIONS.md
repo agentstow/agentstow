@@ -217,3 +217,52 @@ managed is Foreign, and deleting Foreign entries is exactly what the rest of the
 tool promises never to do. JSON removal uses `shift_remove`, because with
 `preserve_order` a plain `remove` swaps the last entry into the hole and
 scrambles the user's file.
+
+## 2026-08-13 — Codex hook rows verified against the live agent
+
+The earlier entry flagged these as unverified. Confirmed on this machine:
+hook *definitions* live in `~/.codex/hooks.json` (JSON, top-level `hooks` key,
+the same nested shape Claude uses), and `[features] hooks = true` enables them.
+The registry rows were already correct. Claude's own hooks live in
+`~/.claude/settings.json` and Gemini's in `~/.gemini/settings.json`, both under
+a `hooks` key with the same shape.
+
+## 2026-08-13 — Trust safety is structural, not behavioural
+
+Codex records a `trusted_hash` per hook in `~/.codex/config.toml` — a
+*different* file from the `hooks.json` that holds the definitions. agentstow
+writes only the latter, so "never write trust metadata" holds by construction
+rather than by care. A test asserts `config.toml` is byte-identical after a
+sync, and the same was confirmed against the real file.
+
+The hash formula itself was not reverse-engineered: eight candidate
+serialisations (the hook object, the group, the whole file, the command, the
+referenced script) all failed to reproduce it. That does not weaken the
+guarantee, but it does mean agentstow cannot *predict* whether Codex will
+re-prompt — only that it never grants trust itself.
+
+## 2026-08-13 — Claude and Codex share a hook vocabulary; Gemini does not
+
+Codex's snake_case trust keys (`pre_tool_use`, `user_prompt_submit`) are
+lowercased forms of the PascalCase names in `hooks.json`, which match Claude's.
+So the canonical event name is Claude's, matching the choice already made for
+commands and subagents. Gemini uses its own words for some of the same moments
+(`BeforeTool`, `AfterTool`, `AfterAgent`, `PreCompress`) and has no equivalent
+for others; an event an agent does not have is skipped and reported as
+`unsupported`, never invented.
+
+## 2026-08-13 — The hooks family is "in use" when its directory exists
+
+An empty `~/.agents/hooks/` still means the user adopted the family, so
+leftovers are reported. No directory at all means the family is unused, and no
+agent's own hooks are listed. Without that distinction, either a hook deleted
+from the Store would go unreported (the ticket requires reporting it), or every
+user who never touched hooks would see every tool's hooks listed as Foreign.
+
+## 2026-08-13 — A Foreign hook is named by its program, not its command line
+
+Reports name our own hooks by their Store command, unresolved. A Foreign hook
+is named by its program only: `curl …` rather than the full line. Another
+tool's command line can carry a credential, and agentstow echoing it into a
+terminal, a CI log or `--json` would be exposure the user never asked for —
+found by probing a hook with an `Authorization:` header on it.
