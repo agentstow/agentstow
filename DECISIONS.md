@@ -439,3 +439,17 @@ from this machine. The publishing token can publish but is not authorised to
 read organisation membership, so a 403 there says nothing either way. The
 runbook records this so a future release is not held up by a check that cannot
 answer the question — the publish itself is what settles it.
+
+## 2026-08-13 — Both macOS targets build on Apple silicon runners
+
+The first tagged run exposed a real hole: `build darwin-x64` asked for
+`macos-13`, an image GitHub has retired, so the job sat queued with no runner
+assigned while the other four finished in under a minute. It would have hung
+until timeout, and the packaging job — which needs all four binaries — would
+never have started. A workflow that has never run is not a verified workflow,
+which is the lesson worth keeping.
+
+Both macOS targets now build on `macos-latest`. rustc cross-compiles
+`x86_64-apple-darwin` from Apple silicon using the SDK already on the runner,
+so nothing else is needed, and a single label cannot be retired out from under
+one architecture while leaving the other working.

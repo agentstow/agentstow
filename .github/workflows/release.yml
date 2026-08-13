@@ -25,10 +25,13 @@ jobs:
         include:
           - target: darwin-arm64
             triple: aarch64-apple-darwin
-            runner: macos-14
+            runner: macos-latest
           - target: darwin-x64
             triple: x86_64-apple-darwin
-            runner: macos-13
+            # Built on Apple silicon: rustc cross-compiles the x86_64 Mac target
+            # with the SDK already on the runner, and GitHub has retired the
+            # macos-13 Intel image — a job asking for it queues forever.
+            runner: macos-latest
           - target: linux-x64
             triple: x86_64-unknown-linux-gnu
             runner: ubuntu-latest
