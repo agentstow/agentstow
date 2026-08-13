@@ -266,3 +266,41 @@ is named by its program only: `curl …` rather than the full line. Another
 tool's command line can carry a credential, and agentstow echoing it into a
 terminal, a CI log or `--json` would be exposure the user never asked for —
 found by probing a hook with an `Authorization:` header on it.
+
+## 2026-08-13 — Hook commands are never expanded, because the command is the identity
+
+`${env:VAR}` is written through verbatim rather than resolved. Element identity
+matches hooks by command string, so a resolved command stops matching the
+reference that produced it: the hook was reported `missing` and its own
+rendering `foreign`, on every run, with `status` stuck at exit 2 and `sync`
+claiming a change forever. Verified by reproduction, then by the fix converging
+across three different values of the same variable.
+
+The consequence is better than the bug it replaces: a hook that needs a secret
+reads it from the environment when it runs, so the value never lands in a config
+file at all. This is the opposite of the MCP rule, and deliberately so — there
+the value is data an agent consumes, here it is a name agentstow matches on.
+
+## 2026-08-13 — Gemini hook timeout units are unresolved
+
+Claude and Codex hook timeouts are seconds. Gemini's may be milliseconds: on
+this machine claude-mem writes `10` to Claude and `10000` to Gemini for what is
+plainly the same ten seconds, which only makes sense as a unit conversion. But
+plannotator writes `345600` to both Codex and Gemini, which is four days as
+seconds and under six minutes as milliseconds — so the evidence conflicts, and
+gemini-cli is not installed here to settle it.
+
+agentstow therefore writes the timeout **verbatim** and does not guess. Applying
+a 1000x multiplier on this evidence risks a hook that is killed instantly; not
+applying one risks a hook that hangs. Passing through what the user wrote is the
+only choice that is wrong in a way they can see and correct. Resolve this by
+reading gemini-cli's source when it is available.
+
+## 2026-08-13 — Two Gemini event mappings left deliberately unmapped
+
+A design review proposed mapping `UserPromptSubmit` to Gemini's `BeforeAgent`.
+Gemini's own config uses `BeforeAgent` for claude-mem's *session-init*, which
+reads more like session start than prompt submission, so the mapping is not
+clearly right. An unsupported event is reported out loud; a wrong mapping is
+silent. The conservative choice stands until Gemini's event semantics can be
+confirmed. The same applies to the claim that Codex has no `Notification` event.

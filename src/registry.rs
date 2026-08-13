@@ -103,10 +103,13 @@ pub enum Subagents {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Hooks {
     /// Key-merge hook elements into a native config file.
+    ///
+    /// No `format`: every hook surface is JSON, and carrying a field the code
+    /// does not honour is how a TOML config once got a JSON document written
+    /// into it.
     KeyMerge {
         file: &'static str,
         root_key: &'static str,
-        format: Format,
     },
     /// No hook surface agentstow targets in v1.
     None,
@@ -239,7 +242,6 @@ pub const AGENTS: &[Agent] = &[
         hooks: Hooks::KeyMerge {
             file: ".claude/settings.json",
             root_key: "hooks",
-            format: Format::Json,
         },
     },
     Agent {
@@ -258,7 +260,6 @@ pub const AGENTS: &[Agent] = &[
         hooks: Hooks::KeyMerge {
             file: ".codex/hooks.json",
             root_key: "hooks",
-            format: Format::Json,
         },
     },
     Agent {
@@ -319,7 +320,6 @@ pub const AGENTS: &[Agent] = &[
         hooks: Hooks::KeyMerge {
             file: ".gemini/settings.json",
             root_key: "hooks",
-            format: Format::Json,
         },
     },
     Agent {

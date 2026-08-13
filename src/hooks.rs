@@ -15,6 +15,12 @@
 //! * **Scripts are not managed.** A Store command must be a path that means the
 //!   same thing to every agent; agentstow syncs the declaration, not the file
 //!   it runs.
+//! * **`${env:VAR}` is not expanded.** The command string *is* the identity, so
+//!   it must not vary with the ambient environment — a resolved command would
+//!   stop matching the reference that produced it, leaving the hook reported as
+//!   missing and its own rendering as foreign, on every run, forever. A hook
+//!   that needs a secret should read it from the environment itself; then the
+//!   value never reaches the config file at all.
 
 use std::path::{Path, PathBuf};
 
@@ -132,7 +138,6 @@ pub struct Item {
     rendered: Option<Value>,
     native_event: Option<&'static str>,
     matcher: Option<String>,
-    holds_secret: bool,
 }
 
 impl Item {
@@ -181,12 +186,7 @@ pub fn survey(env: &Env, config: &Config, store_dir: &Path) -> Result<Survey, Er
         let Some(agent) = target.agent else {
             continue;
         };
-        let Hooks::KeyMerge {
-            file,
-            root_key,
-            format: _,
-        } = agent.hooks
-        else {
+        let Hooks::KeyMerge { file, root_key } = agent.hooks else {
             continue;
         };
 
@@ -212,12 +212,11 @@ pub fn survey(env: &Env, config: &Config, store_dir: &Path) -> Result<Survey, Er
                     rendered: None,
                     native_event: None,
                     matcher: None,
-                    holds_secret: false,
                 });
                 continue;
             };
 
-            let rendered = render(hook, env)?;
+            let rendered = render(hook);
             let current = find_by_command(&existing, native_event, &hook.command);
             let state = match current {
                 None => State::Missing,
@@ -235,7 +234,6 @@ pub fn survey(env: &Env, config: &Config, store_dir: &Path) -> Result<Survey, Er
                 rendered: Some(rendered),
                 native_event: Some(native_event),
                 matcher: hook.matcher.clone(),
-                holds_secret: hook.command.contains("${env:"),
             });
         }
 
@@ -262,7 +260,6 @@ pub fn survey(env: &Env, config: &Config, store_dir: &Path) -> Result<Survey, Er
                     rendered: None,
                     native_event: None,
                     matcher: None,
-                    holds_secret: false,
                 });
             }
         }
@@ -335,8 +332,9 @@ pub fn apply(path: &Path, root_key: &str, items: &[&Item]) -> Result<crate::mcp:
 
     Ok(crate::mcp::Report {
         path: written.path,
-        exposed: crate::write::is_exposed(written.mode)
-            && items.iter().any(|item| item.holds_secret),
+        // Hook commands are written verbatim, so a sync never puts a resolved
+        // secret anywhere it was not already.
+        exposed: false,
         mode: written.mode,
     })
 }
@@ -420,43 +418,17 @@ fn native_event(agent: &str, canonical: &str) -> Option<&'static str> {
 }
 
 /// One hook as an agent's config wants it.
-fn render(hook: &Hook, env: &Env) -> Result<Value, Error> {
-    let command = expand(&hook.command, env)?;
+///
+/// The map is built from scratch out of a closed set of keys, which is the
+/// structural reason no code path here can emit trust metadata.
+fn render(hook: &Hook) -> Value {
     let mut object = Map::new();
     object.insert("type".into(), Value::from("command"));
-    object.insert("command".into(), Value::from(command));
+    object.insert("command".into(), Value::from(hook.command.as_str()));
     if let Some(timeout) = hook.timeout {
         object.insert("timeout".into(), Value::from(timeout));
     }
-    Ok(Value::Object(object))
-}
-
-/// Resolve `${env:VAR}` in a hook command, the same way MCP entries do.
-fn expand(text: &str, env: &Env) -> Result<String, Error> {
-    const OPEN: &str = "${env:";
-    let mut out = String::with_capacity(text.len());
-    let mut rest = text;
-
-    while let Some(start) = rest.find(OPEN) {
-        let (before, from_marker) = rest.split_at(start);
-        out.push_str(before);
-        let body = &from_marker[OPEN.len()..];
-        let Some(end) = body.find('}') else {
-            out.push_str(from_marker);
-            return Ok(out);
-        };
-        let name = &body[..end];
-        let Some(value) = env.var(name).filter(|v| !v.is_empty()) else {
-            return Err(Error {
-                message: format!("hook command: ${{env:{name}}} is not set in the environment"),
-            });
-        };
-        out.push_str(value);
-        rest = &body[end + 1..];
-    }
-
-    out.push_str(rest);
-    Ok(out)
+    Value::Object(object)
 }
 
 /// Every hook the Store declares, from `hooks/<event>.toml`.

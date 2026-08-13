@@ -304,20 +304,49 @@ fn status_reports_the_hooks_family() {
 }
 
 #[test]
-fn a_hook_never_prints_a_resolved_secret() {
+fn a_hook_command_is_written_verbatim_and_converges() {
     let f = machine();
+    // The command IS the identity, so it must not vary with the environment:
+    // a resolved command would stop matching the reference that produced it.
     f.store_file(
         "hooks/SessionStart.toml",
         "[[hook]]\ncommand = \"notify --token ${env:TOKEN}\"\n",
     );
 
-    for args in [vec!["status"], vec!["sync", "--dry-run"], vec!["sync"]] {
-        f.run_with_env(&args, &[("TOKEN", "CANARY-hook-9f2")])
-            .assert_no_output_contains("CANARY-hook-9f2");
-    }
+    f.run_with_env(&["sync"], &[("TOKEN", "CANARY-hook-9f2")])
+        .assert_clean();
 
     let hooks = hooks_at(&f, ".claude/settings.json", "hooks", "SessionStart");
-    assert_eq!(hooks[0]["command"], "notify --token CANARY-hook-9f2");
+    assert_eq!(
+        hooks[0]["command"], "notify --token ${env:TOKEN}",
+        "the reference is passed through, so the secret never reaches the file"
+    );
+
+    // And it settles: the same hook is recognised as its own on the next run.
+    f.run_with_env(&["sync"], &[("TOKEN", "CANARY-hook-9f2")])
+        .assert_clean()
+        .assert_stdout_has("up to date");
+    f.run_with_env(&["status"], &[("TOKEN", "CANARY-hook-9f2")])
+        .assert_code(0);
+}
+
+#[test]
+fn a_hook_converges_even_when_the_environment_changes() {
+    let f = machine();
+    f.store_file(
+        "hooks/SessionStart.toml",
+        "[[hook]]\ncommand = \"notify --token ${env:TOKEN}\"\n",
+    );
+    f.run_with_env(&["sync"], &[("TOKEN", "first")])
+        .assert_clean();
+
+    // A changed value must not orphan the hook and append a second one.
+    f.run_with_env(&["sync"], &[("TOKEN", "second")])
+        .assert_clean()
+        .assert_stdout_has("up to date");
+
+    let hooks = hooks_at(&f, ".claude/settings.json", "hooks", "SessionStart");
+    assert_eq!(hooks.len(), 1, "no orphan was left behind: {hooks:?}");
 }
 
 #[test]
