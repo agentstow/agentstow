@@ -1,7 +1,7 @@
 {
   "name": "agentstow",
   "version": "0.0.1",
-  "description": "GNU Stow for your AI coding agents — sync skills, instructions, MCP servers, commands, subagents and hooks from one canonical store",
+  "description": "Canonical configs, fanned out to all your AI coding agents — sync skills, instructions, MCP servers, commands, subagents and hooks from one canonical store",
   "license": "MIT",
   "repository": {
     "type": "git",

@@ -7,8 +7,9 @@ use clap::{Parser, Subcommand};
 #[command(
     name = "agentstow",
     version,
-    about = "GNU Stow for your AI coding agents",
-    long_about = "Sync skills, instructions, MCP servers, commands, subagents and hooks \
+    about = "Canonical configs, fanned out to all your AI coding agents",
+    long_about = "Canonical configs, fanned out to all your AI coding agents.\n\n\
+                  Sync skills, instructions, MCP servers, commands, subagents and hooks \
                   from one canonical Store (~/.agents) to every installed agent."
 )]
 pub struct Cli {

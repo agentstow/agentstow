@@ -512,3 +512,36 @@ though it *can* read the Store directly, because that requires the user to set
 states what is true unconditionally; a `Native` claim would be false on an
 unconfigured machine, and `doctor` would report a capability the agent does not
 have.
+## 2026-08-13 — claude-mem's instruction files were moved aside, not merged
+
+The first real `sync` on the author's machine hit both conflict paths at once:
+`~/.config/opencode/AGENTS.md` and `~/.gemini/GEMINI.md` carried the
+`<claude-mem-context>` marker, so agentstow refused them and asked for a move
+or a merge. Merge was rejected because the content was not instructions — both
+files held only claude-mem's first-run placeholder ("no memory yet"), never
+updated since June and July despite daily use, and folding a per-agent memory
+block into the Store's `AGENTS.md` would fan it out to every agent. The files
+were renamed to `*.claude-mem.bak` in place and sync created the symlinks.
+
+The residual risk is recorded rather than solved: claude-mem's opencode and
+Antigravity installers write these paths with a plain `writeFileSync`, which
+follows symlinks. Both writers run only on explicit install commands and are
+guarded by the marker check, but a re-install would append the placeholder
+*through* the link into `~/.agents/AGENTS.md` — and the Store is not currently
+a git repo, so nothing would flag it. Two follow-ups fall out: the Store ought
+to be under git (its own pitch says "committable"), and a conflict message that
+names the owning tool could also warn that the owner may write through the
+future symlink.
+
+## 2026-08-13 — variant-identical counts against sync, but sync will not fix it
+
+After the full sync, `status` still exited 2 for exactly one item: openclaw's
+`agent-reach`, a real directory byte-identical to the Store — a stray copy from
+a direct install, not a variant. `sync` deliberately leaves variant-identical
+entries alone (conservatism is right: collapsing a directory is a delete), yet
+`status` counts the item and its footer says "run `agentstow sync`", which is
+advice that cannot succeed. The copy was verified identical with `diff -r`,
+removed by hand, and re-linked by sync; exit code went to 0. The UX gap stands
+as product feedback: either variant-identical should not count toward the exit
+code, or the footer should name the manual collapse instead of pointing at
+sync.

@@ -1,6 +1,6 @@
 # agentstow
 
-Syncs AI coding agent configs from one canonical store to every installed agent — symlink fan-out for identical-bytes configs (skills, instructions, commands, subagents), rendered key-merge for entries in shared files (MCP, hooks), rendered whole files where formats differ. GNU Stow's philosophy applied to agent configs.
+Syncs AI coding agent configs from one canonical store to every installed agent — symlink fan-out for identical-bytes configs (skills, instructions, commands, subagents), rendered key-merge for entries in shared files (MCP, hooks), rendered whole files where formats differ.
 
 ## Language
 
