@@ -36,6 +36,12 @@ pub enum State {
     Drifted,
     /// Only in the agent's config. Not ours; never touched.
     Foreign,
+    /// In the Store, but this agent is not on the server's allowlist, and it is
+    /// not in the agent's config either. Nothing to do.
+    Excluded,
+    /// In the Store and in this agent's config, but no longer allowlisted for
+    /// it. Reported so a narrowed allowlist does not leave leftovers unnoticed.
+    Stranded,
 }
 
 impl State {
@@ -55,6 +61,8 @@ impl State {
             State::Missing => "missing",
             State::Drifted => "drifted",
             State::Foreign => "foreign",
+            State::Excluded => "excluded",
+            State::Stranded => "stranded",
         }
     }
 }
@@ -108,6 +116,10 @@ impl Item {
                 }
             }
             State::Foreign => "not in the Store — left alone".into(),
+            State::Excluded => "not allowlisted for this agent".into(),
+            State::Stranded => {
+                "still here but no longer allowlisted — `agentstow mcp remove` clears it".into()
+            }
         }
     }
 }
@@ -165,7 +177,27 @@ pub fn survey(env: &Env, config: &Config, store_file: &Path) -> Result<Survey, E
         };
 
         for (name, spec) in &servers {
-            let rendered = render(name, spec, dialect, env)?;
+            if !config.mcp_allows(name, &target.name) {
+                // Scoped away from this agent: nothing to render, but say so if
+                // an earlier sync already put it there.
+                if existing_servers.contains_key(name) {
+                    survey.items.push(Item {
+                        target: target.name.clone(),
+                        name: name.clone(),
+                        path: path.clone(),
+                        root_key,
+                        format,
+                        state: State::Stranded,
+                        rendered: None,
+                        changed_keys: Vec::new(),
+                        holds_secret: false,
+                    });
+                }
+                continue;
+            }
+
+            let tweaks = config.mcp_tweaks(name, &target.name);
+            let rendered = render(name, spec, dialect, env, tweaks)?;
             let state = match existing_servers.get(name) {
                 None => State::Missing,
                 Some(current) if *current == rendered => State::Managed,
@@ -185,7 +217,8 @@ pub fn survey(env: &Env, config: &Config, store_file: &Path) -> Result<Survey, E
                 state,
                 rendered: Some(rendered),
                 changed_keys,
-                holds_secret: mentions_env_ref(spec),
+                holds_secret: mentions_env_ref(spec)
+                    || tweaks.map(mentions_env_ref_map).unwrap_or(false),
             });
         }
 
@@ -216,6 +249,10 @@ fn mentions_env_ref(spec: &Value) -> bool {
     serde_json::to_string(spec)
         .map(|text| text.contains("${env:"))
         .unwrap_or(false)
+}
+
+fn mentions_env_ref_map(spec: &Map<String, Value>) -> bool {
+    mentions_env_ref(&Value::Object(spec.clone()))
 }
 
 /// Write every Managed change destined for one config file, in one pass.
@@ -376,6 +413,15 @@ fn read_store(path: &Path) -> Result<BTreeMap<String, Value>, Error> {
 ///
 /// TOML is normalised to JSON here purely so the survey can compare entries
 /// with one set of rules; the JSON form is never written back.
+/// The servers already in one agent's config, whatever format it is in.
+pub fn native_servers(
+    path: &Path,
+    root_key: &str,
+    format: Format,
+) -> Result<Map<String, Value>, Error> {
+    read_existing(path, root_key, format)
+}
+
 fn read_existing(path: &Path, root_key: &str, format: Format) -> Result<Map<String, Value>, Error> {
     match format {
         Format::Json => match read_agent_config(path)?.get(root_key) {
@@ -465,8 +511,73 @@ fn passthrough(spec: &Map<String, Value>, out: &mut Map<String, Value>) {
 }
 
 /// Render one Store server into an agent's native shape, resolving references.
-fn render(name: &str, spec: &Value, dialect: McpDialect, env: &Env) -> Result<Value, Error> {
-    let resolved = resolve_refs(name, spec, env)?;
+fn render(
+    name: &str,
+    spec: &Value,
+    dialect: McpDialect,
+    env: &Env,
+    tweaks: Option<&Map<String, Value>>,
+) -> Result<Value, Error> {
+    render_inner(name, spec, dialect, env, tweaks, true)
+}
+
+/// Render without resolving `${env:VAR}`, for comparing translations rather
+/// than values. A literal reference in an agent's own config must compare equal
+/// to itself, or adoption would call every such server unfaithful.
+fn render_structure(
+    name: &str,
+    spec: &Value,
+    dialect: McpDialect,
+    env: &Env,
+    tweaks: Option<&Map<String, Value>>,
+) -> Result<Value, Error> {
+    render_inner(name, spec, dialect, env, tweaks, false)
+}
+
+fn render_inner(
+    name: &str,
+    spec: &Value,
+    dialect: McpDialect,
+    env: &Env,
+    tweaks: Option<&Map<String, Value>>,
+    resolve: bool,
+) -> Result<Value, Error> {
+    let mut rendered = render_dialect(name, spec, dialect, env, resolve)?;
+
+    // Tweaks are native keys, so they land after translation — and before the
+    // Managed/Drifted comparison, or a tweaked server would drift forever.
+    if let Some(tweaks) = tweaks {
+        let raw = Value::Object(tweaks.clone());
+        let resolved = if resolve {
+            resolve_refs(name, &raw, env)?
+        } else {
+            raw
+        };
+        if let (Some(target), Some(extra)) = (rendered.as_object_mut(), resolved.as_object()) {
+            for (key, value) in extra {
+                target.insert(key.clone(), value.clone());
+            }
+        }
+        if dialect == McpDialect::Codex {
+            strip_nulls(&mut rendered);
+        }
+    }
+
+    Ok(rendered)
+}
+
+fn render_dialect(
+    name: &str,
+    spec: &Value,
+    dialect: McpDialect,
+    env: &Env,
+    resolve: bool,
+) -> Result<Value, Error> {
+    let resolved = if resolve {
+        resolve_refs(name, spec, env)?
+    } else {
+        spec.clone()
+    };
     let Some(fields) = resolved.as_object() else {
         return Ok(resolved);
     };
@@ -678,4 +789,267 @@ fn differing_keys(current: Option<&Value>, rendered: &Value) -> Vec<String> {
     keys.sort();
     keys.dedup();
     keys
+}
+
+/// What adopting one native entry produced.
+///
+/// Like [`Item`], this deliberately implements neither `Debug` nor `Display`:
+/// `canonical` and `tweaks` hold values read out of an agent's config, which
+/// may be secrets the user put there by hand.
+pub struct Absorbed {
+    /// The entry as it will be written to the Store, in the standard shape.
+    pub canonical: Value,
+    /// Native keys with no canonical home, kept for the source agent alone.
+    pub tweaks: Map<String, Value>,
+    /// What could not be represented faithfully, in words, never values.
+    pub notes: Vec<String>,
+}
+
+/// Translate one agent's native entry back into the canonical shape.
+///
+/// Keys agentstow models become canonical; everything else becomes a Tweak for
+/// the agent it came from, because a knob one agent understands is not
+/// automatically meaningful to the others.
+pub fn absorb(name: &str, entry: &Value, dialect: McpDialect) -> Result<Absorbed, Error> {
+    let fields = entry.as_object().ok_or_else(|| Error {
+        message: format!("server `{name}` is not an object"),
+    })?;
+
+    let mut canonical = Map::new();
+    let mut tweaks = Map::new();
+    let mut notes = Vec::new();
+    // Native keys this dialect consumed, so they are not also kept as Tweaks.
+    let mut consumed: Vec<&str> = Vec::new();
+
+    match dialect {
+        McpDialect::Standard => {
+            for key in TRANSLATED {
+                if let Some(value) = fields.get(*key) {
+                    canonical.insert((*key).to_string(), value.clone());
+                    consumed.push(key);
+                }
+            }
+        }
+        McpDialect::Codex => {
+            if let Some(url) = fields.get("url") {
+                canonical.insert("url".into(), url.clone());
+                consumed.push("url");
+                if let Some(headers) = fields.get("http_headers") {
+                    canonical.insert("headers".into(), headers.clone());
+                    consumed.push("http_headers");
+                }
+                notes.push(format!(
+                    "`{name}`: Codex has one remote transport, so http and sse cannot be told \
+                     apart — no `type` was recorded"
+                ));
+            } else {
+                for key in ["command", "args", "env"] {
+                    if let Some(value) = fields.get(key) {
+                        canonical.insert(key.to_string(), value.clone());
+                        consumed.push(key);
+                    }
+                }
+            }
+        }
+        McpDialect::Opencode => {
+            let kind = fields.get("type").and_then(Value::as_str);
+            consumed.push("type");
+            let remote = kind == Some("remote") || (kind.is_none() && fields.contains_key("url"));
+            if remote {
+                for key in ["url", "headers"] {
+                    if let Some(value) = fields.get(key) {
+                        canonical.insert(key.to_string(), value.clone());
+                        consumed.push(key);
+                    }
+                }
+                notes.push(format!(
+                    "`{name}`: OpenCode has one remote transport, so http and sse cannot be told \
+                     apart — no `type` was recorded"
+                ));
+            } else {
+                match fields.get("command") {
+                    Some(Value::Array(parts)) => {
+                        let mut parts = parts.iter();
+                        if let Some(program) = parts.next() {
+                            canonical.insert("command".into(), program.clone());
+                        }
+                        let args: Vec<Value> = parts.cloned().collect();
+                        if !args.is_empty() {
+                            canonical.insert("args".into(), Value::Array(args));
+                        }
+                        consumed.push("command");
+                    }
+                    // A hand-written config may use a bare string; take it as
+                    // written rather than dropping the server on the floor.
+                    Some(other) => {
+                        canonical.insert("command".into(), other.clone());
+                        consumed.push("command");
+                    }
+                    None => {}
+                }
+                if let Some(env) = fields.get("environment") {
+                    canonical.insert("env".into(), env.clone());
+                    consumed.push("environment");
+                }
+            }
+        }
+        McpDialect::Gemini => {
+            // Gemini is the one dialect that records the transport, in the name
+            // of the URL key, so adoption from it is exact.
+            if let Some(url) = fields.get("httpUrl") {
+                canonical.insert("type".into(), Value::from("http"));
+                canonical.insert("url".into(), url.clone());
+                consumed.push("httpUrl");
+            } else if let Some(url) = fields.get("url") {
+                canonical.insert("type".into(), Value::from("sse"));
+                canonical.insert("url".into(), url.clone());
+                consumed.push("url");
+            }
+            for key in ["command", "args", "env", "headers"] {
+                if let Some(value) = fields.get(key) {
+                    canonical.insert(key.to_string(), value.clone());
+                    consumed.push(key);
+                }
+            }
+        }
+        McpDialect::Windsurf => {
+            if let Some(url) = fields.get("serverUrl") {
+                canonical.insert("url".into(), url.clone());
+                consumed.push("serverUrl");
+                notes.push(format!(
+                    "`{name}`: Windsurf records no transport, so http and sse cannot be told \
+                     apart — no `type` was recorded"
+                ));
+            }
+            for key in ["command", "args", "env", "headers"] {
+                if let Some(value) = fields.get(key) {
+                    canonical.insert(key.to_string(), value.clone());
+                    consumed.push(key);
+                }
+            }
+        }
+    }
+
+    for (key, value) in fields {
+        if consumed.contains(&key.as_str()) {
+            continue;
+        }
+        tweaks.insert(key.clone(), value.clone());
+    }
+
+    // A null cannot survive the TOML config file, so it is never claimed as a
+    // Tweak — saying it was kept and then losing it is the worst outcome.
+    let dropped: Vec<String> = tweaks
+        .iter()
+        .filter(|(_, v)| v.is_null())
+        .map(|(k, _)| k.clone())
+        .collect();
+    if !dropped.is_empty() {
+        tweaks.retain(|_, v| !v.is_null());
+        notes.push(format!(
+            "`{name}`: {} had no value and was not kept",
+            dropped.join(", ")
+        ));
+    }
+
+    if !tweaks.is_empty() {
+        let mut names: Vec<&str> = tweaks.keys().map(String::as_str).collect();
+        names.sort();
+        notes.push(format!(
+            "`{name}`: {} has no place in the standard shape and was kept as a Tweak for this \
+             agent alone",
+            names.join(", ")
+        ));
+    }
+
+    Ok(Absorbed {
+        canonical: Value::Object(canonical),
+        tweaks,
+        notes,
+    })
+}
+
+/// Which keys would still differ if this adoption were synced back.
+///
+/// Empty means the next `sync` is genuinely a no-op for this server, which is
+/// the only proof that an adoption was faithful.
+pub fn verify(
+    name: &str,
+    canonical: &Value,
+    dialect: McpDialect,
+    native: &Value,
+    env: &Env,
+    tweaks: Option<&Map<String, Value>>,
+) -> Result<Vec<String>, Error> {
+    let rendered = render_structure(name, canonical, dialect, env, tweaks)?;
+    Ok(differing_keys(Some(native), &rendered))
+}
+
+/// Remove one server from a Target's config. The only place agentstow deletes.
+///
+/// Returns `None` when the server was not there, so the caller can stay quiet.
+pub fn strip(
+    path: &Path,
+    root_key: &str,
+    format: Format,
+    name: &str,
+) -> Result<Option<Report>, Error> {
+    let body = match format {
+        Format::Json => {
+            let mut document = read_agent_config(path)?;
+            let Some(root) = document.as_object_mut() else {
+                return Ok(None);
+            };
+            let Some(Value::Object(servers)) = root.get_mut(root_key) else {
+                return Ok(None);
+            };
+            // shift_remove, never remove: with preserve_order the latter swaps
+            // the last entry into the hole and scrambles the user's file.
+            if servers.shift_remove(name).is_none() {
+                return Ok(None);
+            }
+            serde_json::to_string_pretty(&document).map_err(|e| Error {
+                message: format!("cannot serialise {}: {e}", path.display()),
+            })?
+        }
+        Format::Toml => {
+            let text = read_text(path)?;
+            match crate::mcp_toml::remove_entry(&text, root_key, name).map_err(|detail| Error {
+                message: format!("{}: {detail} — left untouched", path.display()),
+            })? {
+                Some(updated) => updated,
+                None => return Ok(None),
+            }
+        }
+    };
+
+    let written = crate::write::atomic(path, body.as_bytes()).map_err(|e| Error {
+        message: format!("cannot write {}: {e}", path.display()),
+    })?;
+    Ok(Some(Report {
+        path: written.path,
+        exposed: false,
+        mode: written.mode,
+    }))
+}
+
+/// Read the Store's servers, or an empty map if there is no Store file yet.
+pub fn store_servers(store_file: &Path) -> Result<Map<String, Value>, Error> {
+    if !store_file.is_file() {
+        return Ok(Map::new());
+    }
+    Ok(read_store(store_file)?.into_iter().collect())
+}
+
+/// Write the Store's servers back, in the standard shape.
+pub fn store_write(store_file: &Path, servers: &Map<String, Value>) -> Result<(), Error> {
+    let mut document = Map::new();
+    document.insert("mcpServers".into(), Value::Object(servers.clone()));
+    let body = serde_json::to_string_pretty(&Value::Object(document)).map_err(|e| Error {
+        message: format!("cannot serialise {}: {e}", store_file.display()),
+    })?;
+    crate::write::atomic(store_file, format!("{body}\n").as_bytes()).map_err(|e| Error {
+        message: format!("cannot write {}: {e}", store_file.display()),
+    })?;
+    Ok(())
 }

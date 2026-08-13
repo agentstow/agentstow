@@ -272,6 +272,12 @@ impl Fixture {
         self
     }
 
+    /// Raw text of a Store-relative file.
+    pub fn contents_of_store(&self, rel: &str) -> String {
+        fs::read_to_string(self.store.join(rel))
+            .unwrap_or_else(|e| panic!("cannot read store/{rel}: {e}"))
+    }
+
     /// Parse a home-relative JSON file.
     pub fn json(&self, rel: &str) -> serde_json::Value {
         let body = fs::read_to_string(self.home.join(rel))

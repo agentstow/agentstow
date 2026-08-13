@@ -12,6 +12,7 @@ use clap::Parser;
 pub mod adopt;
 pub mod cli;
 pub mod config;
+pub mod config_edit;
 pub mod doctor;
 pub mod env;
 pub mod family;
@@ -20,6 +21,7 @@ pub mod instructions;
 pub mod link;
 pub mod lock;
 pub mod mcp;
+pub mod mcp_cmd;
 pub mod mcp_toml;
 pub mod registry;
 pub mod report;
@@ -80,6 +82,18 @@ pub fn run(
         }
     };
 
+    // A rule naming an agent that does not exist is almost always a typo, and
+    // silently ignoring it would scope a server to nothing at all.
+    for (server, agent) in config.mcp_agent_names() {
+        if registry::by_name(agent).is_none() {
+            let _ = writeln!(
+                err,
+                "error: mcp.{server} names `{agent}`, which is not an agent agentstow knows about"
+            );
+            return EXIT_ERROR;
+        }
+    }
+
     let mut reporter = report::Reporter::new(out, err);
 
     match parsed.command {
@@ -87,6 +101,15 @@ pub fn run(
         cli::Command::Init => init::run(&env, &mut reporter),
         cli::Command::Adopt { path } => adopt::run(&env, &config, &mut reporter, &path),
         cli::Command::Status { json } => status::run(&env, &config, &mut reporter, json),
+        cli::Command::Mcp { command } => match command {
+            cli::McpCommand::List { json } => mcp_cmd::list(&env, &config, &mut reporter, json),
+            cli::McpCommand::Adopt { spec, all } => {
+                mcp_cmd::adopt(&env, &config, &mut reporter, spec.as_deref(), all)
+            }
+            cli::McpCommand::Remove { name } => {
+                mcp_cmd::remove(&env, &config, &mut reporter, &name)
+            }
+        },
         cli::Command::Doctor => doctor::run(&env, &config, &mut reporter),
     }
 }

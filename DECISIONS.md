@@ -165,3 +165,55 @@ above a Managed server (it lives in the table's decor, not the key's), a bare
 `[mcp_servers]` header the user typed by hand, and the file's own line endings
 and byte-order mark. None of these change what the file means, which is exactly
 why silently rewriting them would be an unrequested edit.
+
+## 2026-08-13 — The tool config schema for MCP: `agents` and `tweaks`, nothing else
+
+`[mcp.<name>] agents = [...]` scopes a server; `[mcp.<name>.tweaks.<agent>]`
+holds native knobs for one agent. The reserved `tweaks` segment avoids the
+ambiguity in a flatter `[mcp.<name>.<agent>]`, where adding an agent to the
+registry would silently change what an unedited config file means. Inside
+`[mcp.<name>]` only those two keys are accepted; anything else is an error, so
+a typo is loud rather than ignored forever.
+
+## 2026-08-13 — Adoption records what is, rather than deciding to spread it
+
+`mcp adopt` writes an allowlist naming only the agents it actually absorbed
+from, so the following `sync` is a genuine no-op. Adopting a server that lives
+in one agent does not silently push it to the other five; the message says how
+to widen it. The allowlist is built from what was absorbed, never from what was
+asked for — naming an agent whose entry was refused would let the next sync
+overwrite that agent's server with another agent's version.
+
+## 2026-08-13 — An adoption that would not survive a sync is refused
+
+`mcp adopt` renders its own result back through the dialect and compares it
+against the entry it read. Anything that differs means the next sync would
+change that file, so the adoption is refused rather than reported as success.
+The comparison deliberately skips `${env:VAR}` resolution: a literal reference
+in an agent's own config must compare equal to itself, or every such server
+would read as unfaithful.
+
+## 2026-08-13 — Ambiguous transports are recorded by omission
+
+Codex, OpenCode and Windsurf cannot express the difference between http and
+sse, so adopting a remote server from them records no `type` at all. Omission
+re-renders identically, which is what makes the no-op guarantee hold; a guess
+would not. Gemini encodes the transport in its URL key, so adoption from it is
+exact. Every omission is reported.
+
+## 2026-08-13 — Adoption warns when it copies something that looks like a secret
+
+Values are taken verbatim out of an agent's config, so a credential typed there
+by hand lands in the Store — the file this design encourages committing. When a
+key under `env` or `headers` looks like a credential and holds a literal value,
+adoption says so by key name, never by value, and suggests `${env:VAR}`.
+
+## 2026-08-13 — `mcp remove` is the only deletion, and it is thorough
+
+It clears the server from every Target, from the tool config (allowlist and
+Tweaks alike) and from the Store, in that order, so no intermediate state is
+incoherent. It refuses a name the Store does not have: a server agentstow never
+managed is Foreign, and deleting Foreign entries is exactly what the rest of the
+tool promises never to do. JSON removal uses `shift_remove`, because with
+`preserve_order` a plain `remove` swaps the last entry into the hole and
+scrambles the user's file.

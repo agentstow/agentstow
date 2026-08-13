@@ -4,11 +4,11 @@
 
 **Blocked by:** 07 — `agentstow.toml` configuration; 09 — MCP dialects.
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] `mcp list` reports Store servers plus per-target state in the fixed vocabulary
-- [ ] An allowlisted server reaches only its listed agents; unlisted capable agents get nothing
-- [ ] A Tweak table's keys appear only in that one agent's rendering
-- [ ] `mcp remove` leaves neither the Store entry nor any target rendering behind
-- [ ] `mcp adopt` from a Claude (JSON) entry and a Codex (TOML) entry produces a Store server + Tweaks such that the next sync changes nothing
-- [ ] Adoption reports any field it could not represent rather than dropping it silently
+- [x] `mcp list` reports Store servers plus per-target state in the fixed vocabulary
+- [x] An allowlisted server reaches only its listed agents; unlisted capable agents get nothing
+- [x] A Tweak table's keys appear only in that one agent's rendering
+- [x] `mcp remove` leaves neither the Store entry nor any target rendering behind
+- [x] `mcp adopt` from a Claude (JSON) entry and a Codex (TOML) entry produces a Store server + Tweaks such that the next sync changes nothing
+- [x] Adoption reports any field it could not represent rather than dropping it silently

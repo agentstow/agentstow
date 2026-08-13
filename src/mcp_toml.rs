@@ -17,7 +17,7 @@ use toml_edit::{Array, DocumentMut, Item, Table, Value as TomlValue};
 ///
 /// `TomlError`'s own `Display` quotes the offending source line verbatim, and
 /// these files hold resolved secrets — so it must never reach a message.
-fn position_only(text: &str, error: &toml_edit::TomlError) -> String {
+pub fn position_only(text: &str, error: &toml_edit::TomlError) -> String {
     let offset = error.span().map_or(0, |s| s.start).min(text.len());
     let head = &text.as_bytes()[..offset];
     let line = 1 + head.iter().filter(|b| **b == b'\n').count();
@@ -107,8 +107,29 @@ pub fn merge_section(
     Ok(doc.to_string())
 }
 
+/// Remove one entry from a section, preserving everything else.
+///
+/// Returns `None` when the entry was not there.
+pub fn remove_entry(text: &str, section: &str, name: &str) -> Result<Option<String>, String> {
+    if text.trim().is_empty() {
+        return Ok(None);
+    }
+    let mut doc: DocumentMut = text
+        .parse()
+        .map_err(|e: toml_edit::TomlError| position_only(text, &e))?;
+
+    let Some(parent) = doc.get_mut(section).and_then(Item::as_table_mut) else {
+        return Ok(None);
+    };
+    // `remove` on a toml_edit table is order-preserving, unlike the JSON side.
+    if parent.remove(name).is_none() {
+        return Ok(None);
+    }
+    Ok(Some(doc.to_string()))
+}
+
 /// A JSON object as a standard (non-inline) TOML table.
-fn object_to_table(object: &Map<String, Value>) -> Result<Table, String> {
+pub fn object_to_table(object: &Map<String, Value>) -> Result<Table, String> {
     let mut table = Table::new();
     for (key, value) in object {
         match value {
@@ -158,6 +179,15 @@ fn to_toml_value(value: &Value) -> Option<TomlValue> {
         // Objects are handled by the caller as sub-tables; nulls cannot exist.
         Value::Object(_) | Value::Null => return None,
     })
+}
+
+/// A TOML table as a JSON object — used for Tweak tables in the tool config.
+pub fn table_to_json(table: &Table) -> Map<String, Value> {
+    let mut out = Map::new();
+    for (key, item) in table.iter() {
+        out.insert(key.to_string(), item_to_json(item));
+    }
+    out
 }
 
 /// Convert a parsed TOML item back to JSON, for comparison only.

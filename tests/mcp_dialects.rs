@@ -586,10 +586,8 @@ fn the_users_line_endings_survive() {
     let after = f.contents(".codex/config.toml");
     assert!(after.contains("\r\n"), "CRLF was rewritten to LF");
     assert!(
-        !after
-            .lines()
-            .any(|l| l.ends_with('\r') && l.trim().is_empty() && false),
-        "sanity"
+        !after.contains("\n\n") || after.contains("\r\n\r\n"),
+        "line endings were left mixed:\n{after:?}"
     );
     assert!(after.contains("[mcp_servers.serena]"));
 }

@@ -19,6 +19,7 @@ use std::path::Path;
 use toml_edit::{DocumentMut, Item};
 
 use crate::family::Family;
+use serde_json::{Map, Value};
 
 /// Where the config file lives inside the config directory.
 pub const FILE: &str = "agentstow.toml";
@@ -32,11 +33,24 @@ pub struct CustomTarget {
     pub fanout: BTreeMap<Family, String>,
 }
 
+/// Per-server MCP settings: who gets it, and any agent-specific knobs.
+///
+/// Both live here rather than in the Store because the Store holds the
+/// ecosystem-standard shape only.
+#[derive(Debug, Clone, Default)]
+pub struct McpRule {
+    /// Agents allowed to receive this server. `None` means every capable agent.
+    pub agents: Option<Vec<String>>,
+    /// Native keys merged into one agent's rendering, by agent name.
+    pub tweaks: BTreeMap<String, Map<String, Value>>,
+}
+
 #[derive(Debug, Clone, Default)]
 pub struct Config {
     /// Registry agents the user switched off, by name.
     disabled: Vec<String>,
     custom: Vec<CustomTarget>,
+    mcp: BTreeMap<String, McpRule>,
 }
 
 #[derive(Debug)]
@@ -64,8 +78,14 @@ impl Config {
             }
         };
 
-        let doc: DocumentMut = text.parse().map_err(|e| Error {
-            message: format!("{} is not valid TOML: {e}", path.display()),
+        // Never format the parse error: it quotes the offending source line, and
+        // this file can hold adopted secrets in a Tweak.
+        let doc: DocumentMut = text.parse().map_err(|e: toml_edit::TomlError| Error {
+            message: format!(
+                "{} is not valid TOML ({})",
+                path.display(),
+                crate::mcp_toml::position_only(&text, &e)
+            ),
         })?;
 
         let mut config = Self::default();
@@ -115,7 +135,109 @@ impl Config {
             }
         }
 
+        if let Some(item) = doc.get("mcp") {
+            let mcp = item.as_table().ok_or_else(|| Error {
+                message: format!(
+                    "{}: `mcp` must be a table of servers written as [mcp.<name>]",
+                    path.display()
+                ),
+            })?;
+            for (server, value) in mcp.iter() {
+                let table = value.as_table().ok_or_else(|| Error {
+                    message: format!("{}: mcp.{server} must be a table", path.display()),
+                })?;
+                let mut rule = McpRule::default();
+
+                for (key, item) in table.iter() {
+                    match key {
+                        "agents" => {
+                            let array = item.as_array().ok_or_else(|| Error {
+                                message: format!(
+                                    "{}: mcp.{server}.agents must be a list of agent names",
+                                    path.display()
+                                ),
+                            })?;
+                            let mut names = Vec::new();
+                            for entry in array.iter() {
+                                let name = entry.as_str().ok_or_else(|| Error {
+                                    message: format!(
+                                        "{}: mcp.{server}.agents must hold agent names",
+                                        path.display()
+                                    ),
+                                })?;
+                                names.push(name.to_string());
+                            }
+                            rule.agents = Some(names);
+                        }
+                        "tweaks" => {
+                            let tweaks = item.as_table().ok_or_else(|| Error {
+                                message: format!(
+                                    "{}: mcp.{server}.tweaks must be a table of agents",
+                                    path.display()
+                                ),
+                            })?;
+                            for (agent, knobs) in tweaks.iter() {
+                                let table = knobs.as_table().ok_or_else(|| Error {
+                                    message: format!(
+                                        "{}: mcp.{server}.tweaks.{agent} must be a table",
+                                        path.display()
+                                    ),
+                                })?;
+                                let json = crate::mcp_toml::table_to_json(table);
+                                rule.tweaks.insert(agent.to_string(), json);
+                            }
+                        }
+                        // A closed key set: a typo here would otherwise be
+                        // silently ignored for the life of the file.
+                        other => {
+                            return Err(Error {
+                                message: format!(
+                                    "{}: mcp.{server}.{other} is not a setting — \
+                                     expected `agents` or `tweaks`",
+                                    path.display()
+                                ),
+                            })
+                        }
+                    }
+                }
+
+                config.mcp.insert(server.to_string(), rule);
+            }
+        }
+
         Ok(config)
+    }
+
+    /// The rule for one server, if the user wrote one.
+    pub fn mcp_rule(&self, server: &str) -> Option<&McpRule> {
+        self.mcp.get(server)
+    }
+
+    /// Whether this server is meant for this agent.
+    pub fn mcp_allows(&self, server: &str, agent: &str) -> bool {
+        match self.mcp.get(server).and_then(|r| r.agents.as_ref()) {
+            Some(allowed) => allowed.iter().any(|a| a == agent),
+            None => true,
+        }
+    }
+
+    /// Native knobs for one server on one agent.
+    pub fn mcp_tweaks(&self, server: &str, agent: &str) -> Option<&Map<String, Value>> {
+        self.mcp.get(server)?.tweaks.get(agent)
+    }
+
+    /// Every agent name mentioned anywhere in the MCP rules, for validation.
+    pub fn mcp_agent_names(&self) -> Vec<(&str, &str)> {
+        let mut names = Vec::new();
+        for (server, rule) in &self.mcp {
+            for agent in rule.agents.iter().flatten() {
+                names.push((server.as_str(), agent.as_str()));
+            }
+            for agent in rule.tweaks.keys() {
+                names.push((server.as_str(), agent.as_str()));
+            }
+        }
+        names
     }
 
     pub fn is_disabled(&self, name: &str) -> bool {
