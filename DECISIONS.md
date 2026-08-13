@@ -472,3 +472,43 @@ reading the table. An under-scoped token would still pass the workflow's
 `refuse to deploy without a token` guard, which only checks the secret is
 non-empty; it would fail later inside `wrangler deploy`. The guard proves
 presence, the run proves permission.
+
+## 2026-08-13 — The Store is a commons agentstow rents, not one it owns
+
+`~/.agents/` was chosen as a neutral name; it has since become an interop
+contract. opencode and oh-my-pi scan it natively, Hermes Agent ships
+`~/.agents/skills` as the documented example for its `skills.external_dirs`
+setting, and the `skills` CLI keeps `.skill-lock.json` in the root. Renaming it
+to `~/.agentstow/`, or moving it under XDG, would break tools that hardcode it —
+so the path is now fixed by other people's source, not by preference. ADR-0004
+records this along with the split from `~/.agentstow/`, whose real justification
+is the git boundary (the Store is committed and synced; the lock file and
+per-machine tweaks must not be), not the "purity" argument ADR-0002 gave.
+
+The consequence is that agentstow must admit tenancy. `doctor` now names
+Store-root entries that are not its own families, and deliberately names
+*entries* rather than counting *tools*: filenames carry no authorship, so one
+neighbour may own three files and agentstow cannot tell. `status` stays silent —
+a co-tenant has no fan-out relationship to report — and `init` was left alone.
+
+## 2026-08-13 — Hermes does follow symlinks; the premise was three months stale
+
+The plan to give Hermes real copies rested on the belief that it cannot follow
+symlinked skills. That was true and is documented — NousResearch/hermes-agent
+issue #8293, where `rglob("SKILL.md")` and `os.walk()` skip directory symlinks
+on Python 3.11+ — but it was fixed on main in April 2026, and the installed
+v0.20.0 walks with `followlinks=True`. The 140 symlinks already in
+`~/.hermes/skills`, the oldest from May, had been working the whole time.
+
+So no `Skills::Copy` mechanism was built. That matters beyond Hermes: a copy
+family would have needed marker identity (ADR-0003) applied to a *directory*,
+and the marker is a first-line comment in a file — there is nowhere to put one
+in a skill directory that the agent will not also read as content. ADR-0001's
+"drift is impossible by construction" survives intact.
+
+Hermes is registered as `Skills::FanOut` rather than `Skills::Native` even
+though it *can* read the Store directly, because that requires the user to set
+`skills.external_dirs` and agentstow does not write that file. A registry row
+states what is true unconditionally; a `Native` claim would be false on an
+unconfigured machine, and `doctor` would report a capability the agent does not
+have.

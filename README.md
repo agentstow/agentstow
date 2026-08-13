@@ -43,9 +43,10 @@ agentstow mcp list | adopt | remove
 
 ## Agents
 
-Claude Code, Codex, opencode, pi, oh-my-pi, Gemini CLI, Cursor, Windsurf, Roo and Cline.
-Detection is simply whether the agent's config directory exists — agentstow never creates
-one. opencode and oh-my-pi read `~/.agents/` natively, so nothing is written for them.
+Claude Code, Codex, opencode, pi, oh-my-pi, OpenClaw, Hermes, Gemini CLI, Cursor, Windsurf,
+Roo and Cline. Detection is simply whether the agent's config directory exists — agentstow
+never creates one. opencode and oh-my-pi read `~/.agents/` natively, so nothing is written
+for them.
 
 ## What it will not touch
 
@@ -53,6 +54,11 @@ Anything it does not own. A symlink pointing outside the Store, a hand-written f
 MCP server whose name isn't in the Store — all Foreign, all reported by `status`, none
 ever modified. A real directory shadowing a Store entry is a **Variant**: deliberate,
 preserved, and flagged only when its contents are identical so you can dedupe on purpose.
+
+The Store is a commons, not agentstow's alone — opencode, oh-my-pi and Hermes read
+`~/.agents/` themselves, and other tools keep their own files there. `doctor` names Store
+entries that aren't agentstow's and leaves them be; `status` stays target-only, since a
+neighbour's file has no fan-out to report.
 
 ## What it does not do
 

@@ -4,13 +4,15 @@ mod common;
 
 use common::Fixture;
 
-/// A machine with the four skills fan-out agents plus one native agent.
+/// A machine with every skills fan-out agent plus one native agent.
 fn machine() -> Fixture {
     let f = Fixture::new();
     f.agent(".claude");
     f.agent(".codex");
     f.agent(".pi");
     f.agent(".cursor");
+    f.agent(".openclaw");
+    f.agent(".hermes");
     f.agent(".config/opencode");
     f
 }
@@ -28,6 +30,8 @@ fn links_every_store_skill_into_every_fan_out_target() {
         ".codex/skills",
         ".pi/agent/skills",
         ".cursor/skills",
+        ".openclaw/skills",
+        ".hermes/skills",
     ] {
         for skill in ["research", "tdd"] {
             let rel = format!("{target}/{skill}");

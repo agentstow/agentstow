@@ -1,6 +1,10 @@
 # agentstow v1 — spec
 
-Status: ready-for-agent
+Status: shipped as v1.0.0
+
+This is the record of what v1 was, and is not updated as later versions change. The
+capability matrix below is v1's; the registry in `src/registry.rs` is the live one. For
+decisions taken after v1, read `docs/adr/` (ADR-0004 onward) and `DECISIONS.md`.
 
 ## Problem Statement
 

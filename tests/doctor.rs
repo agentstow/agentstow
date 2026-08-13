@@ -190,3 +190,79 @@ fn init_is_safe_to_run_twice() {
 
     assert!(f.store().join("skills/research/SKILL.md").exists());
 }
+
+// --- The Store as a shared commons (ADR-0004) -------------------------------
+
+#[test]
+fn names_store_entries_that_are_not_agentstows() {
+    // `~/.agents/` is a commons: opencode, oh-my-pi and hermes read it directly
+    // and the `skills` CLI keeps its lock file there. A neighbour's entry is
+    // named so the sharing is visible — never called an issue, never counted.
+    let f = Fixture::new();
+    f.store_file(".skill-lock.json", "{}");
+
+    f.run(&["doctor"])
+        .assert_clean()
+        .assert_stdout_has("Other tools in the Store")
+        .assert_stdout_has(".skill-lock.json")
+        .assert_no_output_contains("issue");
+}
+
+#[test]
+fn says_nothing_about_other_tools_when_there_are_none() {
+    let f = Fixture::new();
+    f.store_skill("research");
+
+    f.run(&["doctor"])
+        .assert_clean()
+        .assert_stdout_lacks("Other tools in the Store");
+}
+
+#[test]
+fn a_relocated_store_warns_that_native_agents_will_not_see_it() {
+    // AGENTSTOW_HOME moves agentstow's Store but cannot move the path a Native
+    // agent hardcodes, so the two diverge in silence unless doctor says so.
+    let f = Fixture::new();
+    f.agent(".config/opencode");
+    let elsewhere = f.root().join("elsewhere");
+    std::fs::create_dir_all(elsewhere.join("skills")).expect("create alternate store");
+
+    f.run_with_vars(
+        &["doctor"],
+        &[
+            ("AGENTSTOW_TARGET_ROOT", f.home().display().to_string()),
+            ("AGENTSTOW_HOME", elsewhere.display().to_string()),
+        ],
+    )
+    .assert_clean()
+    .assert_stderr_has("opencode")
+    .assert_stderr_has("will not see it");
+}
+
+#[test]
+fn a_relocated_store_is_silent_when_no_native_agent_is_installed() {
+    let f = Fixture::new();
+    f.agent(".claude");
+    let elsewhere = f.root().join("elsewhere");
+    std::fs::create_dir_all(elsewhere.join("skills")).expect("create alternate store");
+
+    f.run_with_vars(
+        &["doctor"],
+        &[
+            ("AGENTSTOW_TARGET_ROOT", f.home().display().to_string()),
+            ("AGENTSTOW_HOME", elsewhere.display().to_string()),
+        ],
+    )
+    .assert_clean()
+    .assert_stderr_lacks("will not see it");
+}
+
+#[test]
+fn the_canonical_store_never_warns_about_native_agents() {
+    let f = Fixture::new();
+    f.agent(".config/opencode");
+
+    f.run(&["doctor"])
+        .assert_clean()
+        .assert_stderr_lacks("will not see it");
+}

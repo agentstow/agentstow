@@ -265,8 +265,9 @@ pub const AGENTS: &[Agent] = &[
     Agent {
         name: "opencode",
         root: ".config/opencode",
-        // OpenCode scans ~/.agents/skills natively — fan-out would only create
-        // duplicate-name warnings.
+        // OpenCode scans ~/.agents/skills natively. The Store path is an interop
+        // contract other agents hardcode (ADR-0004), not agentstow's private
+        // choice, so fan-out here would only create duplicate-name warnings.
         skills: Skills::Native,
         instructions: Instructions::Symlink(".config/opencode/AGENTS.md"),
         mcp: Mcp::KeyMerge {
@@ -293,10 +294,42 @@ pub const AGENTS: &[Agent] = &[
     Agent {
         name: "oh-my-pi",
         root: ".omp",
+        // Reads ~/.agents/skills directly (ADR-0004); it keeps no skills
+        // directory of its own, so there is nothing to fan out into.
         skills: Skills::Native,
         instructions: Instructions::Symlink(".omp/agent/AGENTS.md"),
         mcp: Mcp::NativeViaDiscovery,
         commands: Commands::NativeViaDiscovery,
+        subagents: Subagents::None,
+        hooks: Hooks::None,
+    },
+    Agent {
+        name: "openclaw",
+        root: ".openclaw",
+        skills: Skills::FanOut(".openclaw/skills"),
+        // Skills only for now. OpenClaw also keeps agents/, hooks/ and
+        // extensions/ directories, but their formats are unverified and a
+        // guessed target here writes into a real config file.
+        instructions: Instructions::None,
+        mcp: Mcp::None,
+        commands: Commands::None,
+        subagents: Subagents::None,
+        hooks: Hooks::None,
+    },
+    Agent {
+        name: "hermes",
+        root: ".hermes",
+        // Hermes Agent discovers symlinked skills since it began walking with
+        // `followlinks=True`. It can also read the Store directly through its
+        // `skills.external_dirs` setting — but that is user configuration
+        // agentstow does not write, and a capability the registry claims must be
+        // true unconditionally, so this row states the mechanism that always
+        // works.
+        skills: Skills::FanOut(".hermes/skills"),
+        // SOUL.md is the likely instructions surface; unverified, so unclaimed.
+        instructions: Instructions::None,
+        mcp: Mcp::None,
+        commands: Commands::None,
         subagents: Subagents::None,
         hooks: Hooks::None,
     },

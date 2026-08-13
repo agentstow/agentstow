@@ -11,7 +11,9 @@ use std::path::Path;
 use crate::config::Config;
 use crate::env::Env;
 use crate::family::Family;
+use crate::link;
 use crate::registry;
+use crate::registry::Skills;
 use crate::report::Reporter;
 use crate::store::{self, Store};
 use crate::target;
@@ -30,6 +32,7 @@ pub fn run(env: &Env, config: &Config, r: &mut Reporter) -> i32 {
         r.problem(store::missing_message(store.root()));
     }
 
+    report_store_override(env, config, r);
     report_agents(env, config, r);
 
     r.verdict()
@@ -76,6 +79,15 @@ fn report_store(store: &Store, r: &mut Reporter) {
     r.line(format!("  mcp.json      {mcp}"));
     r.blank();
 
+    let others = co_tenants(store);
+    if !others.is_empty() {
+        r.line("Other tools in the Store:");
+        for name in &others {
+            r.line(format!("  {name}"));
+        }
+        r.blank();
+    }
+
     for (_, scan) in &scans {
         for issue in &scan.issues {
             r.warn(issue.to_string());
@@ -89,6 +101,75 @@ fn report_store(store: &Store, r: &mut Reporter) {
             "store hooks/{name}: not a `<Event>.toml` file, skipped"
         ));
     }
+}
+
+/// Names at the Store root that are not agentstow's own families.
+///
+/// The Store is a shared commons, not agentstow's private directory (ADR-0004):
+/// opencode, oh-my-pi and hermes read `~/.agents/` themselves, and the `skills`
+/// CLI keeps its lock file there. An unrecognised name is a neighbour, not a
+/// fault — so these are named and never counted, never called an issue, and
+/// never touched. agentstow can read filenames but not authorship, so it must
+/// not claim how many *tools* are present, only which entries are not its own.
+fn co_tenants(store: &Store) -> Vec<String> {
+    const OURS: &[&str] = &[
+        store::SKILLS,
+        store::COMMANDS,
+        store::SUBAGENTS,
+        store::HOOKS,
+        store::INSTRUCTIONS,
+        store::MCP,
+    ];
+
+    let Ok(read) = std::fs::read_dir(store.root()) else {
+        return Vec::new();
+    };
+    let mut names: Vec<String> = read
+        .flatten()
+        .map(|e| e.file_name().to_string_lossy().into_owned())
+        .filter(|name| !OURS.contains(&name.as_str()))
+        .collect();
+    names.sort();
+    names
+}
+
+/// Warn when a relocated Store is invisible to the agents that read the
+/// canonical path themselves.
+///
+/// `AGENTSTOW_HOME` moves agentstow's Store, but it cannot move the path a
+/// Native agent hardcodes. Those agents keep reading `~/.agents/` and silently
+/// diverge from every agent that gets fan-out — so name them.
+fn report_store_override(env: &Env, config: &Config, r: &mut Reporter) {
+    if env
+        .var("AGENTSTOW_HOME")
+        .filter(|v| !v.is_empty())
+        .is_none()
+    {
+        return;
+    }
+
+    let canonical = env.home().join(crate::env::STORE_DIR);
+    if link::normalize(env.store()) == link::normalize(&canonical) {
+        return;
+    }
+
+    let native: Vec<&str> = target::resolve(env, config)
+        .iter()
+        .filter_map(|t| t.agent)
+        .filter(|a| a.skills == Skills::Native)
+        .map(|a| a.name)
+        .collect();
+    if native.is_empty() {
+        return;
+    }
+
+    r.warn(format!(
+        "AGENTSTOW_HOME points the Store at {}, but {} read {} directly \
+         and will not see it",
+        env.store().display(),
+        native.join(" and "),
+        canonical.display()
+    ));
 }
 
 fn report_agents(env: &Env, config: &Config, r: &mut Reporter) {
