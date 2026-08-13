@@ -9,6 +9,7 @@ use std::io::Write;
 
 use clap::Parser;
 
+pub mod adopt;
 pub mod cli;
 pub mod config;
 pub mod doctor;
@@ -77,6 +78,7 @@ pub fn run(
 
     match parsed.command {
         cli::Command::Sync { dry_run } => sync::run(&env, &config, &mut reporter, dry_run),
+        cli::Command::Adopt { path } => adopt::run(&env, &config, &mut reporter, &path),
         cli::Command::Status { json } => status::run(&env, &config, &mut reporter, json),
         cli::Command::Doctor => doctor::run(&env, &config, &mut reporter),
     }

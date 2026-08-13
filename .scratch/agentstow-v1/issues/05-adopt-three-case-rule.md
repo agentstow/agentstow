@@ -4,9 +4,9 @@
 
 **Blocked by:** 02 — Skills fan-out `sync`.
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] Absent-from-Store case: object moved into the Store, canonical relative link left at the original path, content byte-identical after the move
-- [ ] Identical case: target copy replaced by a link; Store copy untouched
-- [ ] Divergent case: refusal message explains it's a Variant and suggests manual merge; exit 1; filesystem untouched
-- [ ] Works for skill directories and single-file instructions targets alike
+- [x] Absent-from-Store case: object moved into the Store, canonical relative link left at the original path, content byte-identical after the move
+- [x] Identical case: target copy replaced by a link; Store copy untouched
+- [x] Divergent case: refusal message explains it's a Variant and suggests manual merge; exit 1; filesystem untouched
+- [x] Works for skill directories and single-file instructions targets alike

@@ -122,7 +122,8 @@ fn sync_target(
     changed
 }
 
-fn lock_timeout(env: &Env) -> Duration {
+/// How long a mutating command waits for a competing one.
+pub fn lock_timeout(env: &Env) -> Duration {
     let ms = env
         .var("AGENTSTOW_LOCK_TIMEOUT_MS")
         .and_then(|v| v.parse::<u64>().ok())
