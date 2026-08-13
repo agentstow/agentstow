@@ -7,6 +7,7 @@ use serde_json::{json, Value};
 
 use crate::config::Config;
 use crate::env::Env;
+use crate::instructions;
 use crate::link::{self, Item, State};
 use crate::report::Reporter;
 use crate::store::{Store, FANOUT_FAMILIES};
@@ -53,16 +54,23 @@ pub fn run(env: &Env, config: &Config, r: &mut Reporter, as_json: bool) -> i32 {
         }
     }
 
+    let store_file = store.root().join(crate::store::INSTRUCTIONS);
+    let instruction_items = instructions::survey(env, config, &store_file);
+
     let actionable: usize = targets
         .iter()
         .flat_map(|t| &t.items)
         .filter(|i| i.state.actionable())
-        .count();
+        .count()
+        + instruction_items
+            .iter()
+            .filter(|i| i.state.actionable())
+            .count();
 
     if as_json {
-        r.json(&as_value(&store, &targets, actionable));
+        r.json(&as_value(&store, &targets, &instruction_items, actionable));
     } else {
-        human(&targets, actionable, r);
+        human(&targets, &instruction_items, actionable, r);
     }
 
     if r.problem_count() > 0 {
@@ -74,7 +82,12 @@ pub fn run(env: &Env, config: &Config, r: &mut Reporter, as_json: bool) -> i32 {
     }
 }
 
-fn human(targets: &[TargetReport], actionable: usize, r: &mut Reporter) {
+fn human(
+    targets: &[TargetReport],
+    instruction_items: &[instructions::Item],
+    actionable: usize,
+    r: &mut Reporter,
+) {
     for target in targets {
         let linked = target
             .items
@@ -105,6 +118,22 @@ fn human(targets: &[TargetReport], actionable: usize, r: &mut Reporter) {
         }
     }
 
+    if !instruction_items.is_empty() {
+        r.line("instructions (AGENTS.md)");
+        for item in instruction_items {
+            let note = item.note();
+            if note.is_empty() {
+                r.line(format!("  {:<17} {}", item.state.label(), item.target));
+            } else {
+                r.line(format!(
+                    "  {:<17} {} — {note}",
+                    item.state.label(),
+                    item.target
+                ));
+            }
+        }
+    }
+
     r.blank();
     if actionable == 0 {
         r.line("Everything is in sync.");
@@ -115,7 +144,12 @@ fn human(targets: &[TargetReport], actionable: usize, r: &mut Reporter) {
     }
 }
 
-fn as_value(store: &Store, targets: &[TargetReport], actionable: usize) -> Value {
+fn as_value(
+    store: &Store,
+    targets: &[TargetReport],
+    instruction_items: &[instructions::Item],
+    actionable: usize,
+) -> Value {
     let targets: Vec<Value> = targets
         .iter()
         .map(|t| {
@@ -139,8 +173,20 @@ fn as_value(store: &Store, targets: &[TargetReport], actionable: usize) -> Value
         })
         .collect();
 
+    let instructions: Vec<Value> = instruction_items
+        .iter()
+        .map(|i| {
+            json!({
+                "agent": i.target,
+                "state": i.state.label(),
+                "actionable": i.state.actionable(),
+            })
+        })
+        .collect();
+
     json!({
         "store": store.root().display().to_string(),
+        "instructions": instructions,
         "clean": actionable == 0,
         "actionable": actionable,
         "targets": targets,

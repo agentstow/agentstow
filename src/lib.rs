@@ -14,6 +14,7 @@ pub mod cli;
 pub mod config;
 pub mod doctor;
 pub mod env;
+pub mod instructions;
 pub mod link;
 pub mod lock;
 pub mod registry;

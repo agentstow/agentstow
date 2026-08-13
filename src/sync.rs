@@ -5,6 +5,7 @@ use std::time::Duration;
 
 use crate::config::Config;
 use crate::env::Env;
+use crate::instructions;
 use crate::link::{self, Item};
 use crate::lock;
 use crate::report::Reporter;
@@ -58,6 +59,8 @@ pub fn run(env: &Env, config: &Config, r: &mut Reporter, dry_run: bool) -> i32 {
         }
     }
 
+    changes += sync_instructions(env, config, &store, r, dry_run);
+
     if changes == 0 {
         r.line("Everything is up to date.");
     } else {
@@ -71,6 +74,52 @@ pub fn run(env: &Env, config: &Config, r: &mut Reporter, dry_run: bool) -> i32 {
     } else {
         EXIT_CLEAN
     }
+}
+
+/// The instructions family: one Store file, three per-agent mechanisms.
+fn sync_instructions(
+    env: &Env,
+    config: &Config,
+    store: &Store,
+    r: &mut Reporter,
+    dry_run: bool,
+) -> usize {
+    let store_file = store.root().join(crate::store::INSTRUCTIONS);
+    let items = instructions::survey(env, config, &store_file);
+    let noteworthy: Vec<&instructions::Item> = items
+        .iter()
+        .filter(|i| i.state != instructions::State::Linked)
+        .filter(|i| i.state != instructions::State::ImportPresent)
+        .collect();
+    if noteworthy.is_empty() {
+        return 0;
+    }
+
+    r.line("instructions (AGENTS.md)");
+    let mut changed = 0;
+
+    for item in noteworthy {
+        if !item.state.needs_change() {
+            r.line(format!(
+                "  {:<9} {} — {}",
+                item.state.label(),
+                item.target,
+                item.note()
+            ));
+            continue;
+        }
+        if dry_run {
+            r.line(format!("  {:<9} {}", item.state.label(), item.target));
+            changed += 1;
+        } else if let Err(e) = instructions::apply(item) {
+            r.problem(format!("cannot write {}: {e}", item.path.display()));
+        } else {
+            r.line(format!("  {:<9} {}", item.state.label(), item.target));
+            changed += 1;
+        }
+    }
+
+    changed
 }
 
 /// Report — and unless this is a dry run, apply — one Target's items. Returns
