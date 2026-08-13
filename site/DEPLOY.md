@@ -9,7 +9,7 @@ created by hand.
 - [x] First deploy — live at <https://agentstow.dev>
 - [x] `www.agentstow.dev` → 301 to the apex
 - [x] `agentstow.com`, `agentstow.org` (and their `www`) → 301 to the apex
-- [ ] Workers Builds — auto-deploy on push to `main`
+- [x] Auto-deploy on push to `main` — GitHub Actions, not Workers Builds (see below)
 
 ## Deploying
 
@@ -52,20 +52,42 @@ Each rule is a single `http_request_dynamic_redirect` entry, 301, target
 
 ## Auto-deploy
 
-Workers Builds is dashboard-only; there is no CLI or API path, because it runs through the
-GitHub App install flow. Under **Workers & Pages → `agentstow-site` → Settings → Build**:
+`.github/workflows/deploy-site.yml` deploys on any push to `main` that touches `site/`,
+then checks that `/`, `/docs` and a 404 all answer correctly. It needs one repository
+secret, **`CF_DEPLOY_TOKEN`**.
 
-| Setting | Value |
+### The token
+
+Create it at <https://dash.cloudflare.com/profile/api-tokens> → *Create Custom Token*. Give
+it only what a deploy needs — the `max-permissions-cli` token in `~/.zshenv` must **not** be
+reused here, because a secret readable by any workflow should not carry full account access.
+
+| Scope | Permission |
 | :-- | :-- |
-| Git repository | `agentstow/agentstow` |
-| Root directory | `site` |
-| Build command | *(none)* |
-| Deploy command | `npx wrangler deploy` |
-| Production branch | `main` |
-| Build watch paths → include | `site/*` |
+| Account · Workers Scripts | Edit |
+| Zone · Workers Routes (`agentstow.dev`) | Edit |
+| Zone · Zone (`agentstow.dev`) | Read |
 
-There is no build step — `public/` is already the finished site. The root directory is what
-makes `wrangler.toml` findable; without it the deploy runs at the repo root and fails.
+Then `gh secret set CF_DEPLOY_TOKEN --repo agentstow/agentstow`.
+
+### Why not Workers Builds
+
+Cloudflare's own CI would avoid the token entirely, but connecting a repo to it is
+dashboard-only. Verified 2026-08-13, four ways:
+
+- The docs describe only *"Select **Connect** and follow the prompts"*; no API or CLI path.
+- `wrangler` has `deploy`, `versions`, `triggers`, `rollback` — all direct-deploy. Nothing
+  connects a repository.
+- The `cf` CLI has no builds command; its `cf build` is a local build.
+- `GET /accounts/{id}/workers/services/{name}` returns no build or git fields at all —
+  `openroutine-site`, which *is* connected, is byte-for-byte the same shape as this Worker,
+  which is not. `/accounts/{id}/builds/builds` exists but lists builds; it does not create
+  connections.
+
+The blocker is structural rather than an API gap: connecting requires installing the
+Cloudflare GitHub App on the `agentstow` org, which is an interactive OAuth flow no API
+token can perform. Keeping the deploy in Actions has a second benefit anyway — the
+configuration is in the repo and reviewable, where dashboard build settings are not.
 
 ## Verifying
 
