@@ -4,9 +4,9 @@
 
 **Blocked by:** 04 — Instructions fan-out; 05 — `adopt`; 10 — `mcp list / adopt / remove`.
 
-**Status:** ready-for-agent (scaffold half landed early — see DECISIONS.md)
+**Status:** done
 
 - [x] `init` on an empty fixture creates the Store skeleton and nothing else
-- [ ] The report on a populated fixture names detected agents, per-family adoption candidates, and conflicts with hints — all in the fixed vocabulary
+- [x] The report on a populated fixture names detected agents, per-family adoption candidates, and conflicts with hints — all in the fixed vocabulary
 - [x] `sync` without a Store suggests `init` and exits with an error, touching nothing
 - [x] Second `init` changes no files and still prints the current report

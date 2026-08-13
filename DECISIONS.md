@@ -355,3 +355,20 @@ non-ASCII. Matching Gemini's cosmetic style would mean hand-rolling the escaping
 of triple quotes inside triple quotes, which is exactly the kind of thing that
 produces an unparseable file for one unlucky user. The Marker already tells a
 reader to edit the Store rather than the file.
+
+## 2026-08-13 — The first-run report answers "what of mine could this take over"
+
+On an empty machine the interesting question is what agentstow does; on a used
+one it is what of the user's existing config the Store could hold. So `init`
+reports agents found, then per-family adoption candidates with the command that
+would take them, then conflicts with their remedy.
+
+A candidate is a *real* object in a Target directory whose name the Store does
+not already hold. A symlink is never a candidate: it is either already ours or
+Foreign, and `adopt` refuses both. On this machine that correctly surfaces the
+three hand-made `plannotator-*` skill directories out of the 160 entries in
+`~/.claude/skills`, the rest of which are links.
+
+Long lists are capped at eight entries with a count of the remainder — a first
+run on a populated machine should be readable, and the full picture is what
+`status` is for.

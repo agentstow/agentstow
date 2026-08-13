@@ -100,7 +100,7 @@ pub fn run(
 
     match parsed.command {
         cli::Command::Sync { dry_run } => sync::run(&env, &config, &mut reporter, dry_run),
-        cli::Command::Init => init::run(&env, &mut reporter),
+        cli::Command::Init => init::run(&env, &config, &mut reporter),
         cli::Command::Adopt { path } => adopt::run(&env, &config, &mut reporter, &path),
         cli::Command::Status { json } => status::run(&env, &config, &mut reporter, json),
         cli::Command::Mcp { command } => match command {
