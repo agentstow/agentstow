@@ -51,7 +51,7 @@ jobs:
       - name: the site answers
         run: |
           set -euo pipefail
-          for path in / /docs; do
+          for path in / /docs /zh /zh/docs /lang.js; do
             code=$(curl -sS -o /dev/null -w '%{http_code}' --retry 5 --retry-delay 5 \
               --retry-all-errors "https://agentstow.dev$path")
             echo "https://agentstow.dev$path -> $code"
@@ -61,3 +61,9 @@ jobs:
           code=$(curl -sS -o /dev/null -w '%{http_code}' https://agentstow.dev/definitely-not-here)
           echo "404 handling -> $code"
           [ "$code" = "404" ] || { echo "expected 404" >&2; exit 1; }
+          # A miss under /zh/ must serve the *Chinese* 404 — the nearest-404 walk.
+          code=$(curl -sS -o /dev/null -w '%{http_code}' https://agentstow.dev/zh/definitely-not-here)
+          echo "zh 404 handling -> $code"
+          [ "$code" = "404" ] || { echo "expected 404" >&2; exit 1; }
+          curl -sS https://agentstow.dev/zh/definitely-not-here | grep -q 'lang="zh' \
+            || { echo "zh 404 not served for a /zh/* miss" >&2; exit 1; }

@@ -497,6 +497,16 @@ footer nav {
 }
 
 @media (max-width: 52rem) {
+  /* Three nav links (Docs / GitHub / the language switcher) need tighter
+   * spacing than two did before they clear a 390px viewport. */
+  .masthead .shell {
+    gap: var(--as-space-4);
+  }
+
+  .masthead nav {
+    gap: var(--as-space-3);
+  }
+
   .split {
     grid-template-columns: minmax(0, 1fr);
   }
@@ -518,3 +528,31 @@ footer nav {
     transition-duration: 0.01ms !important;
   }
 }
+
+/* ------------------------------------------------- Chinese (zh) pages ---- */
+/* Scoped by <html lang="zh-Hans">; :lang(zh) matches it by prefix, so the
+ * English pages are untouched. Same palette, same scale — only what CJK
+ * glyphs need: fonts with Simplified coverage, no negative tracking (CJK
+ * glyphs must not touch), more leading, and an em-based measure because ch
+ * is the width of "0" and overshoots for full-width characters. */
+
+html:lang(zh) {
+  --as-font-sans: ui-sans-serif, -apple-system, BlinkMacSystemFont,
+    "PingFang SC", "Hiragino Sans GB", "Noto Sans CJK SC", "Noto Sans SC",
+    "Microsoft YaHei", "Segoe UI", Roboto, sans-serif;
+  --as-font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas,
+    "Liberation Mono", "PingFang SC", "Noto Sans CJK SC", monospace;
+  --as-measure: 38em; /* 64ch of Latin ≈ 38 full-width characters */
+  --as-leading-body: 1.75;
+}
+
+:lang(zh) h1,
+:lang(zh) h2,
+:lang(zh) h3,
+:lang(zh) .brand,
+:lang(zh) .positions dt {
+  letter-spacing: 0;
+}
+
+:lang(zh) h1 { max-width: 18em; }
+:lang(zh) h2 { max-width: 15em; }

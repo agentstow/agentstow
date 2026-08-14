@@ -545,3 +545,57 @@ removed by hand, and re-linked by sync; exit code went to 0. The UX gap stands
 as product feedback: either variant-identical should not count toward the exit
 code, or the footer should name the manual collapse instead of pointing at
 sync.
+
+## 2026-08-14 — The Chinese pages say zh-Hans, except where Facebook is asking
+
+The Simplified Chinese mirror targets a script, not a country — readers in
+Singapore and Malaysia are not `zh-CN`. So `<html lang>`, hreflang, the
+sitemap alternates and `Content-Language` all say `zh-Hans`, and CSS scopes
+with `:lang(zh)`, which matches it by prefix. The one exception is
+`og:locale`, which takes Facebook's enumeration and gets `zh_CN`.
+
+## 2026-08-14 — /zh is public/zh.html, not public/zh/index.html
+
+Wrangler's default `html_handling = "auto-trailing-slash"` would serve
+`zh/index.html` canonically at `/zh/` and answer `/zh` with a redirect hop.
+A flat `zh.html` serves at exactly `/zh` — matching how `docs.html` already
+serves at `/docs` — so the hreflang URLs carry no trailing-slash asymmetry.
+The Chinese docs and 404 live under `public/zh/` because they need the path
+prefix: `zh/404.html` is what makes a miss under `/zh/*` serve the Chinese
+404 via nearest-404 walk-up, which CI now proves after every deploy.
+
+## 2026-08-14 — The zh pages share the English og.png
+
+The OG artwork is the mark, the wordmark, and English-by-design tokens; a
+translated card would mean a second screenshot artifact to regenerate on
+every palette change, for a marginal gain. The zh pages get translated
+`og:title`/`og:description` and `og:locale zh_CN` over the shared image.
+Revisit if the zh pages grow their own social traffic.
+
+## 2026-08-14 — What stays English on the Chinese pages
+
+CLI commands, verbatim CLI output, status tokens (`linked` … `conflict`) and
+the capability-matrix mechanism tokens stay English everywhere, because the
+tables must match what the tool actually prints. Authored commentary is
+translated even inside `<pre>`: `<span class="c">` comment lines and the
+annotations in illustrative trees ("your instructions, once"), which no real
+`ls` ever printed. Vocabulary terms render as 中文（English）— the English
+token is the thing `status` emits, so it stays visible. Section ids are
+byte-identical across languages so `#fragment` deep links work in both.
+
+## 2026-08-14 — The site is no longer zero-JavaScript, by exactly one file
+
+The user asked for automatic browser-language detection, and the config
+deliberately has no Worker (every request a free static-asset hit), so the
+detection is client-side: `public/lang.js`, ~30 dependency-free lines. CSP
+moves from `script-src 'none'` to `'self'` — still no inline and no
+third-party script, and the site works with JS disabled. The script
+negotiates over the full `navigator.languages` list, redirects only
+Simplified-script tags (`zh`, `zh-Hans*`, `zh-CN`, `zh-SG`, `zh-MY`) from
+`/` and `/docs` to their twins, stores an explicit switcher choice in
+localStorage as the override, and never redirects away from a `/zh` URL
+someone opened on purpose. Traditional-script readers keep English rather
+than being force-fed 简体. The rejected alternative — a Worker with
+`run_worker_first` on the hot paths — would have contradicted wrangler.toml's
+documented no-Worker stance and put the two busiest routes on paid
+invocations.

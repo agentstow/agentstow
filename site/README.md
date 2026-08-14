@@ -8,13 +8,19 @@ review.
 wrangler.toml     Cloudflare Workers Static Assets config
 og.html           source for public/og.png (not published — outside public/)
 public/           everything that gets served
+public/zh.html    Simplified Chinese landing page, served at /zh
+public/zh/        Chinese docs and 404, served at /zh/docs and for /zh/* misses
+public/lang.js    the one script: language preference and first-visit detection
 ```
 
 ## Working on it
 
-Hand-written HTML and one CSS file. There is no build step, no npm dependency, and no
-JavaScript on the site at all — the same discipline the product follows, and what lets
-`public/_headers` declare `script-src 'none'` honestly.
+Hand-written HTML and one CSS file. There is no build step and no npm dependency. The
+only JavaScript is `public/lang.js` — ~30 dependency-free lines that honor the
+English/中文 switcher choice and, on a first visit to an English page, redirect
+Simplified-Chinese browsers to the `/zh` twin. `public/_headers` declares
+`script-src 'self'`, which admits exactly that file: no inline script, no third-party
+script, and everything still works with JavaScript disabled.
 
 ```sh
 npx wrangler dev        # from this directory; serves public/ locally
@@ -57,3 +63,16 @@ Every claim on these pages traces to `CONTEXT.md`, `docs/adr/`, or
   so out loud; do not let a tagline reintroduce it.
 - The capability matrix on the landing page is the one in `spec.md`. If the registry in
   `src/registry.rs` changes, both move together.
+
+**The Chinese mirror.** `public/zh.html`, `public/zh/docs.html` and `public/zh/404.html`
+are hand-maintained Simplified Chinese twins of `index.html`, `docs.html` and `404.html`,
+served at `/zh` and `/zh/docs`. They are translations, not a second site: any commit that
+changes user-visible content on an English page must make the matching change to its zh
+twin in the same commit — which means the capability matrix now moves in three places
+with `src/registry.rs`: spec, en, zh. Code samples, CLI output, and mechanism/status
+tokens (`fan-out`, `key-merge`, `linked`, `variant`, …) stay English on the zh pages;
+only authored commentary — `<span class="c">` comment lines and illustrative tree
+annotations inside `<pre>` — is translated. Section `id`s are identical across languages
+so `#fragment` deep links work in both. Keep Chinese prose on single source lines: a
+source line break inside a CJK sentence renders as a stray space in Chrome, so the zh
+files do not hard-wrap paragraphs the way the English files do.

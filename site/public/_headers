@@ -2,11 +2,19 @@
   X-Content-Type-Options: nosniff
   Referrer-Policy: strict-origin-when-cross-origin
   X-Frame-Options: DENY
-  Content-Security-Policy: default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'; object-src 'none'
+  Content-Security-Policy: default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'; object-src 'none'
 
-# script-src 'none' is honest: there is no JavaScript on this site at all.
+# script-src 'self' admits exactly one first-party file: lang.js, the
+# language-preference script. No inline script, no third-party script.
 #
 # No Cache-Control overrides on purpose. Asset filenames carry no content hash,
 # so a long max-age on styles.css would serve fresh HTML against stale CSS for
 # the life of the cache after a deploy. Cloudflare's default — max-age=0,
 # must-revalidate with an ETag — revalidates at the edge for near-nothing.
+
+# Both matchers are needed: /zh/* does not match /zh itself.
+/zh
+  Content-Language: zh-Hans
+
+/zh/*
+  Content-Language: zh-Hans
