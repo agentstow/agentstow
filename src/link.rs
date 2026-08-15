@@ -54,6 +54,41 @@ pub fn normalize(path: &Path) -> PathBuf {
     out
 }
 
+/// Create the symlink at `at` whose contents read `text`.
+///
+/// The one place symlinks are made, so the platform split lives nowhere else.
+#[cfg(unix)]
+pub fn create_symlink(text: &Path, at: &Path) -> io::Result<()> {
+    std::os::unix::fs::symlink(text, at)
+}
+
+/// Windows symlinks are typed, so the flavour comes from what `text` resolves
+/// to right now — a dangling target defaults to a file link, matching what
+/// every Store family links to when the entry is a file. Creation without
+/// Developer Mode or elevation fails with os error 1314; that code is
+/// translated into the fix, because the raw message names a privilege no
+/// normal user has heard of.
+#[cfg(windows)]
+pub fn create_symlink(text: &Path, at: &Path) -> io::Result<()> {
+    use std::os::windows::fs::{symlink_dir, symlink_file};
+    let make = if resolve_link(at, text).is_dir() {
+        symlink_dir
+    } else {
+        symlink_file
+    };
+    make(text, at).map_err(|e| {
+        if e.raw_os_error() == Some(1314) {
+            io::Error::new(
+                e.kind(),
+                "creating symlinks requires Windows Developer Mode \
+                 (Settings → System → For developers) or an elevated shell",
+            )
+        } else {
+            e
+        }
+    })
+}
+
 /// Where a symlink at `link` with contents `text` points, lexically.
 pub fn resolve_link(link: &Path, text: &Path) -> PathBuf {
     if text.is_absolute() {
@@ -285,7 +320,7 @@ pub fn apply(item: &Item) -> io::Result<()> {
             if let Some(parent) = item.path.parent() {
                 fs::create_dir_all(parent)?;
             }
-            std::os::unix::fs::symlink(text, &item.path)
+            create_symlink(text, &item.path)
         }
         State::Stale => {
             let text = item
@@ -293,7 +328,7 @@ pub fn apply(item: &Item) -> io::Result<()> {
                 .as_ref()
                 .expect("stale implies a Store entry");
             fs::remove_file(&item.path)?;
-            std::os::unix::fs::symlink(text, &item.path)
+            create_symlink(text, &item.path)
         }
         State::Dangling => fs::remove_file(&item.path),
         _ => Ok(()),

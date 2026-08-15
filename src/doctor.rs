@@ -4,7 +4,9 @@
 //! read-only: doctor never creates a directory, least of all an agent root,
 //! because a root's existence is what detection means.
 
+#[cfg(unix)]
 use std::ffi::CString;
+#[cfg(unix)]
 use std::os::unix::ffi::OsStrExt;
 use std::path::Path;
 
@@ -221,10 +223,31 @@ fn report_agents(env: &Env, config: &Config, r: &mut Reporter) {
 
 /// Ask the operating system, not the permission bits: a directory owned by
 /// another user at 0755 is not read-only, yet we still cannot write in it.
+#[cfg(unix)]
 fn is_writable(path: &Path) -> bool {
     let Ok(c_path) = CString::new(path.as_os_str().as_bytes()) else {
         return false;
     };
     // SAFETY: c_path is a valid NUL-terminated string for the duration of the call.
     unsafe { libc::access(c_path.as_ptr(), libc::W_OK) == 0 }
+}
+
+/// Windows has no `access(2)` that answers ACLs honestly, so prove it by
+/// doing: create and remove a scratch file. The one deliberate exception to
+/// doctor being read-only — the probe never survives the call.
+#[cfg(windows)]
+fn is_writable(path: &Path) -> bool {
+    let probe = path.join(format!(".agentstow-probe-{}", std::process::id()));
+    match std::fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(&probe)
+    {
+        Ok(file) => {
+            drop(file);
+            let _ = std::fs::remove_file(&probe);
+            true
+        }
+        Err(_) => false,
+    }
 }

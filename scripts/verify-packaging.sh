@@ -24,12 +24,12 @@ say "assemble npm packages"
 # Only the host target has a real binary here; CI cross-builds the rest. The
 # stubs let the launcher resolution and offline install be tested for real.
 bash "$ROOT/scripts/build-npm.sh" "$WORK/pkgs" "$HOST_TARGET" >/dev/null
-for target in darwin-arm64 darwin-x64 linux-arm64 linux-x64; do
+for target in darwin-arm64 darwin-x64 linux-arm64 linux-x64 win32-arm64 win32-x64; do
   [ -d "$WORK/pkgs/$target" ] && continue
   mkdir -p "$WORK/pkgs/$target/bin"
   printf '#!/bin/sh\necho stub\n' > "$WORK/pkgs/$target/bin/agentstow"
   chmod +x "$WORK/pkgs/$target/bin/agentstow"
-  os=darwin; case "$target" in linux-*) os=linux ;; esac
+  os=darwin; case "$target" in linux-*) os=linux ;; win32-*) os=win32 ;; esac
   cpu=arm64; case "$target" in *-x64) cpu=x64 ;; esac
   cat > "$WORK/pkgs/$target/package.json" <<JSON
 { "name": "@agentstow/$target", "version": "$VERSION", "license": "MIT",

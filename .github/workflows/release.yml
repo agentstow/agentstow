@@ -28,18 +28,39 @@ jobs:
           - target: darwin-arm64
             triple: aarch64-apple-darwin
             runner: macos-latest
+            bin: agentstow
+            run_check: true
           - target: darwin-x64
             triple: x86_64-apple-darwin
             # Built on Apple silicon: rustc cross-compiles the x86_64 Mac target
             # with the SDK already on the runner, and GitHub has retired the
             # macos-13 Intel image — a job asking for it queues forever.
             runner: macos-latest
+            bin: agentstow
+            run_check: true
           - target: linux-x64
             triple: x86_64-unknown-linux-gnu
             runner: ubuntu-latest
+            bin: agentstow
+            run_check: true
           - target: linux-arm64
             triple: aarch64-unknown-linux-gnu
             runner: ubuntu-24.04-arm
+            bin: agentstow
+            run_check: true
+          - target: win32-x64
+            triple: x86_64-pc-windows-msvc
+            runner: windows-latest
+            bin: agentstow.exe
+            run_check: true
+          - target: win32-arm64
+            triple: aarch64-pc-windows-msvc
+            # Cross-compiled on the x64 image with the MSVC arm64 cross tools,
+            # like darwin-x64 above — except an x64 host cannot execute the
+            # result, so the run check is skipped for this target only.
+            runner: windows-latest
+            bin: agentstow.exe
+            run_check: false
     steps:
       - uses: actions/checkout@v4
       - name: install the rust toolchain
@@ -53,11 +74,12 @@ jobs:
       - name: build
         run: cargo build --release --locked --target ${{ matrix.triple }}
       - name: the binary runs
-        run: ./target/${{ matrix.triple }}/release/agentstow --version
+        if: ${{ matrix.run_check }}
+        run: ./target/${{ matrix.triple }}/release/${{ matrix.bin }} --version
       - uses: actions/upload-artifact@v4
         with:
           name: binary-${{ matrix.target }}
-          path: target/${{ matrix.triple }}/release/agentstow
+          path: target/${{ matrix.triple }}/release/${{ matrix.bin }}
           if-no-files-found: error
 
   package:
@@ -80,19 +102,22 @@ jobs:
             [darwin-x64]=x86_64-apple-darwin
             [linux-x64]=x86_64-unknown-linux-gnu
             [linux-arm64]=aarch64-unknown-linux-gnu
+            [win32-x64]=x86_64-pc-windows-msvc
+            [win32-arm64]=aarch64-pc-windows-msvc
           )
           for target in "${!TRIPLE[@]}"; do
+            exe=""; case "$target" in win32-*) exe=".exe" ;; esac
             dir="target/${TRIPLE[$target]}/release"
             mkdir -p "$dir"
-            cp "artifacts/binary-$target/agentstow" "$dir/agentstow"
-            chmod +x "$dir/agentstow"
+            cp "artifacts/binary-$target/agentstow$exe" "$dir/agentstow$exe"
+            chmod +x "$dir/agentstow$exe"
           done
       - name: assemble the npm packages
         run: scripts/build-npm.sh dist
       - name: every package is present
         run: |
           set -euo pipefail
-          for expected in agentstow darwin-arm64 darwin-x64 linux-arm64 linux-x64; do
+          for expected in agentstow darwin-arm64 darwin-x64 linux-arm64 linux-x64 win32-arm64 win32-x64; do
             test -f "dist/$expected/package.json" || { echo "missing dist/$expected"; exit 1; }
           done
           test -x dist/linux-x64/bin/agentstow
@@ -204,7 +229,7 @@ jobs:
         # assuming it.
         run: |
           set -euo pipefail
-          chmod +x dist/*/bin/agentstow dist/agentstow/bin/agentstow.js
+          chmod +x dist/*/bin/agentstow* dist/agentstow/bin/agentstow.js
           dist/linux-x64/bin/agentstow --version
       - name: platform packages first, then the launcher
         # The launcher declares the platform packages as optional
@@ -224,7 +249,7 @@ jobs:
               (cd "$1" && npm publish --access public)
             fi
           }
-          for target in darwin-arm64 darwin-x64 linux-arm64 linux-x64; do
+          for target in darwin-arm64 darwin-x64 linux-arm64 linux-x64 win32-arm64 win32-x64; do
             publish "dist/$target"
           done
           publish dist/agentstow

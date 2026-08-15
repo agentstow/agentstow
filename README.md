@@ -28,7 +28,7 @@ There is no state file. There never will be. The filesystem is the state.
 ## Install
 
 ```sh
-npm install -g agentstow      # prebuilt binary, macOS and Linux, no toolchain
+npm install -g agentstow      # prebuilt binary, macOS, Linux and Windows, no toolchain
 cargo install agentstow       # from source, needs Rust 1.97+
 ```
 
@@ -65,8 +65,11 @@ neighbour's file has no fan-out to report.
 ## What it does not do
 
 No cross-machine sync — version the Store with git or chezmoi. **No memory sync**: agent
-memory is not a defined artifact and agentstow will not pretend otherwise. No Windows. No
+memory is not a defined artifact and agentstow will not pretend otherwise. No
 GUI, daemon or file watcher. It does not install skills; it fans out whatever is in the
 Store, whoever put it there.
+
+On Windows, creating symlinks requires Developer Mode (Settings → System → For
+developers) or an elevated shell; `sync` says exactly that when it cannot link.
 
 [Documentation](https://agentstow.dev/docs) · [agentstow.dev](https://agentstow.dev) · MIT

@@ -631,3 +631,24 @@ linux-x64 binary on the runner, and the launcher now repairs an EACCES spawn
 by chmodding 0o755 and retrying once. The runbook records the artifact
 permission trap. crates.io 1.1.2 is unaffected; the npm 1.1.2 packages should
 be deprecated once 1.1.3 is up.
+
+## 2026-08-15 — Windows support: the shape of the port
+
+Adding Windows (1.2.0) forced five calls the spec never made. Symlink creation
+now lives in one helper, `link::create_symlink`: Windows links are typed, so
+the flavour is read from what the link text resolves to at creation time, a
+dangling target defaulting to a file link; privilege failure (os error 1314)
+is rewritten into "enable Developer Mode or elevate". The global lock keeps
+flock on Unix and becomes an empty-share-mode open on Windows — same
+holder-until-exit semantics, no new dependency. File modes are Unix-only:
+`write::atomic` reports mode 0 on Windows and `is_exposed` is always false
+there, because inherited NTFS ACLs are the actual privacy story and any bit
+we invented would make the secrets warning a lie. `doctor`'s writability
+check, `access(2)` on Unix, becomes a create-and-remove probe file on
+Windows — the one sanctioned exception to doctor being read-only. The
+integration tests stay Unix-only; release builds never compile them, and CI
+has no Windows test leg yet. win32-arm64 is cross-compiled on the x64 image
+and is the only target whose binary CI never executes. The first publish of
+the two new npm packages cannot use trusted publishing (npm only trusts
+publishers of packages that exist), so bootstrapping them is a one-time
+manual publish before v1.2.0 can be tagged.

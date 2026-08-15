@@ -27,7 +27,9 @@ pub struct NoHome;
 
 impl std::fmt::Display for NoHome {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str("cannot determine home directory: set HOME or AGENTSTOW_TARGET_ROOT")
+        f.write_str(
+            "cannot determine home directory: set HOME (USERPROFILE on Windows) or AGENTSTOW_TARGET_ROOT",
+        )
     }
 }
 
@@ -41,6 +43,8 @@ impl Env {
         let home = vars
             .get("AGENTSTOW_TARGET_ROOT")
             .or_else(|| vars.get("HOME"))
+            // cmd and PowerShell set USERPROFILE, not HOME; Git Bash sets both.
+            .or_else(|| vars.get("USERPROFILE"))
             .filter(|v| !v.is_empty())
             .map(PathBuf::from)
             .ok_or(NoHome)?;

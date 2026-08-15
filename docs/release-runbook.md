@@ -16,9 +16,9 @@ CI fails with an auth error until this exists.
 - **crates.io** — <https://crates.io/crates/agentstow/settings> → *Trusted
   Publishing* → *Add*: repository owner `agentstow`, repository name
   `agentstow`, workflow filename `release.yml`, environment left blank.
-- **npm** — for **each of the five packages** (`agentstow`,
-  `@agentstow/darwin-arm64`, `@agentstow/darwin-x64`,
-  `@agentstow/linux-arm64`, `@agentstow/linux-x64`): package page → *Settings*
+- **npm** — for **each package** (`agentstow`, `@agentstow/darwin-arm64`,
+  `@agentstow/darwin-x64`, `@agentstow/linux-arm64`, `@agentstow/linux-x64`,
+  `@agentstow/win32-arm64`, `@agentstow/win32-x64`): package page → *Settings*
   → *Trusted Publisher* → *GitHub Actions*: organization `agentstow`,
   repository `agentstow`, workflow filename `release.yml`, environment left
   blank. Trusted publishing also generates provenance attestations; the
@@ -158,4 +158,11 @@ If CI publishing is unavailable, publish by hand from the workflow's
   instead.
 - **Unsupported platforms.** A machine with no matching platform package gets a
   message naming the package it looked for and pointing at `cargo install`,
-  rather than a missing-file crash. Windows is not built: v1 is macOS and Linux.
+  rather than a missing-file crash. Since 1.2.0 the built targets are macOS,
+  Linux and Windows, x64 and arm64 each; win32-arm64 is cross-compiled and is
+  the one target CI never executes.
+- **A new platform package cannot bootstrap itself.** npm trusted publishing
+  only publishes into packages that already exist, so the *first* release of a
+  new `@agentstow/*` package must be published manually with an OTP (from a
+  local `scripts/build-npm.sh dist` or the CI artifact), after which its
+  trusted publisher is configured on npmjs.com and CI takes over.

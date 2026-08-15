@@ -34,6 +34,8 @@
     "@agentstow/darwin-arm64": "0.0.1",
     "@agentstow/darwin-x64": "0.0.1",
     "@agentstow/linux-arm64": "0.0.1",
-    "@agentstow/linux-x64": "0.0.1"
+    "@agentstow/linux-x64": "0.0.1",
+    "@agentstow/win32-arm64": "0.0.1",
+    "@agentstow/win32-x64": "0.0.1"
   }
 }

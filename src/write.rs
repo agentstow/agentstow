@@ -12,10 +12,14 @@
 
 use std::fs::{self, File, OpenOptions};
 use std::io::Write;
+#[cfg(unix)]
 use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
 use std::path::{Path, PathBuf};
 
-/// Mode for a file that may contain resolved secrets.
+/// Mode for a file that may contain resolved secrets. Unix-only: Windows has
+/// no mode bits, and inherited NTFS ACLs are the private-by-default story
+/// there, so [`Written::mode`] reports zero and nothing is ever "exposed".
+#[cfg(unix)]
 const PRIVATE: u32 = 0o600;
 
 /// Removes the temp file unless the write got all the way to `rename`.
@@ -51,9 +55,12 @@ pub fn atomic(path: &Path, bytes: &[u8]) -> std::io::Result<Written> {
     let parent = target.parent().unwrap_or(Path::new("."));
     fs::create_dir_all(parent)?;
 
+    #[cfg(unix)]
     let mode = fs::metadata(&target)
         .map(|m| m.permissions().mode() & 0o777)
         .unwrap_or(PRIVATE);
+    #[cfg(windows)]
+    let mode = 0;
 
     let scratch_path = scratch_path(&target);
     let mut scratch = Scratch {
@@ -62,14 +69,15 @@ pub fn atomic(path: &Path, bytes: &[u8]) -> std::io::Result<Written> {
     };
 
     {
-        let mut file = OpenOptions::new()
-            .write(true)
-            .create_new(true)
-            .mode(PRIVATE)
-            .open(&scratch_path)?;
+        let mut opts = OpenOptions::new();
+        opts.write(true).create_new(true);
+        #[cfg(unix)]
+        opts.mode(PRIVATE);
+        let mut file = opts.open(&scratch_path)?;
         file.write_all(bytes)?;
         // Durable before it is visible: rename must never expose a short file.
         file.sync_all()?;
+        #[cfg(unix)]
         file.set_permissions(fs::Permissions::from_mode(mode))?;
     }
 
@@ -106,8 +114,16 @@ fn resolve(path: &Path) -> PathBuf {
 }
 
 /// Whether a mode lets anyone but the owner read the file.
+#[cfg(unix)]
 pub fn is_exposed(mode: u32) -> bool {
     mode & 0o077 != 0
+}
+
+/// Windows access is ACL-inherited, not mode-carried; there is no bit here
+/// that would make the warning truthful.
+#[cfg(windows)]
+pub fn is_exposed(_mode: u32) -> bool {
+    false
 }
 
 /// A temp name beside the target. The pid keeps unrelated processes apart; the

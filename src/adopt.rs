@@ -166,7 +166,7 @@ fn relink(path: &Path, destination: &Path, file_name: &str, target: &str, r: &mu
 fn place_link(path: &Path, destination: &Path) -> std::io::Result<PathBuf> {
     let parent = path.parent().unwrap_or(Path::new("."));
     let text = link::relative_from(parent, destination);
-    std::os::unix::fs::symlink(&text, path)?;
+    link::create_symlink(&text, path)?;
     Ok(text)
 }
 

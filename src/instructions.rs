@@ -231,7 +231,7 @@ pub fn apply(item: &Item) -> std::io::Result<()> {
             if let Some(parent) = item.path.parent() {
                 fs::create_dir_all(parent)?;
             }
-            std::os::unix::fs::symlink(text, &item.path)
+            crate::link::create_symlink(text, &item.path)
         }
         State::ImportMissing => {
             let line = item.import_line.as_ref().expect("an import mechanism");

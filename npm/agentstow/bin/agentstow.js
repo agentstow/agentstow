@@ -11,10 +11,11 @@
 const { spawnSync } = require("node:child_process");
 
 const PACKAGE = `@agentstow/${process.platform}-${process.arch}`;
+const EXE = process.platform === "win32" ? ".exe" : "";
 
 function binaryPath() {
   try {
-    return require.resolve(`${PACKAGE}/bin/agentstow`);
+    return require.resolve(`${PACKAGE}/bin/agentstow${EXE}`);
   } catch {
     return null;
   }
