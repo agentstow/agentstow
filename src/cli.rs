@@ -10,7 +10,8 @@ use clap::{Parser, Subcommand};
     about = "Canonical configs, fanned out to all your AI coding agents",
     long_about = "Canonical configs, fanned out to all your AI coding agents.\n\n\
                   Sync skills, instructions, MCP servers, commands, subagents and hooks \
-                  from one canonical Store (~/.agents) to every installed agent."
+                  from one canonical Store (~/.agents) to every installed agent.",
+    after_help = "Home: https://github.com/agentstow/agentstow"
 )]
 pub struct Cli {
     #[command(subcommand)]

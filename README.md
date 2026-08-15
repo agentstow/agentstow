@@ -2,6 +2,8 @@
 
 **Canonical configs (skills, MCP, memory, etc.), fanned out to all your AI coding agents.**
 
+Website and docs: <https://agentstow.dev/>
+
 One Store at `~/.agents/` holds the single real copy of every config you share — skills,
 instructions, MCP servers, slash commands, subagents and hooks. `agentstow sync` fans it
 out to every agent you actually have installed.
