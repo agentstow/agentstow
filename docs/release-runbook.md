@@ -146,6 +146,11 @@ If CI publishing is unavailable, publish by hand from the workflow's
   the browser round trip. Granular tokens that bypass 2FA are being restricted
   from January 2027, which is exactly why CI uses trusted publishing and not a
   stored token.
+- **Artifacts strip permissions.** `actions/download-artifact` does not
+  preserve file modes, so any job consuming the `npm-packages` artifact must
+  re-`chmod +x` the binaries before publishing — the publish job does, and
+  proves it by executing the linux-x64 binary. 1.1.2 shipped a non-executable
+  binary because this step was missing.
 - **No install hooks, ever.** The packages carry no `preinstall`, `install` or
   `postinstall` script. That is what makes an install work offline and inside a
   sandboxed CI, and it is asserted by both the local script and the workflow.

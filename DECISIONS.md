@@ -617,3 +617,17 @@ that disagrees with `Cargo.toml`, and both publishers skip versions the
 registry already has, so a re-run after a partial release converges instead
 of tripping on publish-over-existing errors. The manual OTP path survives in
 the runbook as the fallback.
+
+## 2026-08-15 — 1.1.2's npm binaries shipped non-executable; 1.1.3 is the fix
+
+The first CI-published release passed every check and still shipped broken:
+`actions/download-artifact` strips file modes, so the publish job packed the
+platform binaries at 644, and since the raw binary is not a declared npm `bin`
+entry, install-time repair never happens — every `npm install agentstow@1.1.2`
+fails with EACCES at spawn. The package job's own offline-install test could
+not catch it because it runs on the pre-upload `dist/`. Fixed twice over in
+1.1.3: the publish job re-chmods after download and proves it by executing the
+linux-x64 binary on the runner, and the launcher now repairs an EACCES spawn
+by chmodding 0o755 and retrying once. The runbook records the artifact
+permission trap. crates.io 1.1.2 is unaffected; the npm 1.1.2 packages should
+be deprecated once 1.1.3 is up.

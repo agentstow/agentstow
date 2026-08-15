@@ -32,7 +32,16 @@ if (!binary) {
   process.exit(1);
 }
 
-const result = spawnSync(binary, process.argv.slice(2), { stdio: "inherit" });
+let result = spawnSync(binary, process.argv.slice(2), { stdio: "inherit" });
+
+// A package that lost its executable bit in transit (1.1.2 shipped that way)
+// is repairable on the spot; anything else is reported as-is.
+if (result.error && result.error.code === "EACCES") {
+  try {
+    require("node:fs").chmodSync(binary, 0o755);
+    result = spawnSync(binary, process.argv.slice(2), { stdio: "inherit" });
+  } catch {}
+}
 
 if (result.error) {
   process.stderr.write(`agentstow: cannot run ${binary}: ${result.error.message}\n`);

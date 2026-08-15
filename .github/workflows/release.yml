@@ -196,6 +196,16 @@ jobs:
         with:
           name: npm-packages
           path: dist
+      - name: restore the executable bits the artifact round-trip strips
+        # download-artifact does not preserve file modes, and the platform
+        # binary is not a declared bin entry, so npm never repairs it at
+        # install time — 1.1.2 shipped a 644 binary this way. Running the one
+        # binary this runner can execute proves the repair rather than
+        # assuming it.
+        run: |
+          set -euo pipefail
+          chmod +x dist/*/bin/agentstow dist/agentstow/bin/agentstow.js
+          dist/linux-x64/bin/agentstow --version
       - name: platform packages first, then the launcher
         # The launcher declares the platform packages as optional
         # dependencies; publishing it first leaves a window where installing
