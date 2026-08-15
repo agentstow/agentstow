@@ -9,7 +9,7 @@ created by hand.
 - [x] First deploy — live at <https://agentstow.dev>
 - [x] `www.agentstow.dev` → 301 to the apex
 - [x] `agentstow.com`, `agentstow.org` (and their `www`) → 301 to the apex
-- [x] Auto-deploy on push to `main` — GitHub Actions, not Workers Builds (see below)
+- [x] Auto-deploy on push to `main` — Workers Builds (see below)
 
 ## Deploying
 
@@ -52,59 +52,58 @@ Each rule is a single `http_request_dynamic_redirect` entry, 301, target
 
 ## Auto-deploy
 
-`.github/workflows/deploy-site.yml` deploys on any push to `main` that touches `site/`,
-then checks that `/`, `/docs` and a 404 all answer correctly. It needs one repository
-secret, **`CF_DEPLOY_TOKEN`**.
+Deploys are automatic: Cloudflare's Workers Builds is connected to `agentstow/agentstow`, and
+a push to `main` that touches `site/` deploys the site. A push touching nothing under `site/`
+is skipped before a build is queued, and non-production branches get preview versions via
+`npx wrangler versions upload` without promoting them.
 
-### The token
+Connected under **Workers & Pages → `agentstow-site` → Settings → Build** — dashboard only;
+there is no CLI or API path (see the history note below). The configuration of record:
 
-Create it at <https://dash.cloudflare.com/profile/api-tokens> → *Create Custom Token*. Give
-it only what a deploy needs — the `max-permissions-cli` token in `~/.zshenv` must **not** be
-reused here, because a secret readable by any workflow should not carry full account access.
-
-| Scope | Permission |
+| Setting | Value |
 | :-- | :-- |
-| Account · Workers Scripts | Edit |
-| Zone · Workers Routes (`agentstow.dev`) | Edit |
-| Zone · Zone (`agentstow.dev`) | Read |
+| Git repository | `agentstow/agentstow` |
+| Root directory | `site` |
+| Build command | *(none)* |
+| Deploy command | `npx wrangler deploy` |
+| Version command | `npx wrangler versions upload` |
+| Production branch | `main` |
+| Builds for non-production branches | **on** |
+| Build watch paths → include | `site/*` |
 
-Then `gh secret set CF_DEPLOY_TOKEN --repo agentstow/agentstow`.
+The GitHub App is installed on the `agentstow` org, scoped to this one repository. Cloudflare
+authenticates builds with its own auto-minted API token (`Workers Builds - <timestamp>`,
+visible under Settings → Build); no repository secret is involved. The Worker name in the
+dashboard must stay `agentstow-site` — it has to match `name` in `wrangler.toml` or the build
+fails.
 
-Created and stored 2026-08-13; run `31746869454` (`workflow_dispatch`) deployed green in 18s,
-which is what proves the three scopes above are sufficient — an under-scoped token fails in
-`wrangler deploy`, not at the `refuse to deploy without a token` guard.
+### History: this replaced a GitHub Actions deploy
 
-> **Scope note.** This token can publish the Worker and manage routes on `agentstow.dev`. It
-> deliberately cannot touch the redirect rulesets on `agentstow.com` / `.org` — those rules are
-> static and CI never rewrites them. Managing them from CI would need `Zone · Zone WAF` (or
-> Rulesets) `Edit` on all three zones, which is a far broader secret for no gain.
-
-### Why not Workers Builds
-
-Cloudflare's own CI would avoid the token entirely, but connecting a repo to it is
-dashboard-only. Verified 2026-08-13, four ways:
-
-- The docs describe only *"Select **Connect** and follow the prompts"*; no API or CLI path.
-- `wrangler` has `deploy`, `versions`, `triggers`, `rollback` — all direct-deploy. Nothing
-  connects a repository.
-- The `cf` CLI has no builds command; its `cf build` is a local build.
-- `GET /accounts/{id}/workers/services/{name}` returns no build or git fields at all —
-  `openroutine-site`, which *is* connected, is byte-for-byte the same shape as this Worker,
-  which is not. `/accounts/{id}/builds/builds` exists but lists builds; it does not create
-  connections.
-
-The blocker is structural rather than an API gap: connecting requires installing the
-Cloudflare GitHub App on the `agentstow` org, which is an interactive OAuth flow no API
-token can perform. Keeping the deploy in Actions has a second benefit anyway — the
-configuration is in the repo and reviewable, where dashboard build settings are not.
+Until 2026-08-15 the deploy lived in `.github/workflows/deploy-site.yml`, authenticated by a
+scoped `CF_DEPLOY_TOKEN` repository secret — deliberately: the 2026-08-13 survey (docs,
+`wrangler`, the `cf` CLI, and the REST API, each checked separately) found no scriptable way
+to connect a repository to Workers Builds, and in-repo configuration was judged worth the
+token upkeep. Those findings still hold; the connection above was made by hand in the
+dashboard. The decision was reversed to converge with `soulmachine/openroutine`, which
+deploys the same way. The workflow was deleted, the repo secret removed, the Cloudflare-side
+token revoked, and the workflow's post-deploy smoke checks moved into
+[Verifying](#verifying) below.
 
 ## Verifying
 
 ```sh
-curl -sI https://agentstow.dev            | head -1   # HTTP/2 200
-curl -sI https://agentstow.dev/docs       | head -1   # HTTP/2 200
-curl -s -o /dev/null -w '%{http_code}\n' https://agentstow.dev/nope   # 404
+curl -s -o /dev/null -w '%{http_code}\n' https://agentstow.dev        # 200
+curl -s -o /dev/null -w '%{http_code}\n' https://agentstow.dev/docs   # 200
+curl -s -o /dev/null -w '%{http_code}\n' https://agentstow.dev/zh     # 200
+curl -s -o /dev/null -w '%{http_code}\n' https://agentstow.dev/zh/docs # 200
+curl -s -o /dev/null -w '%{http_code}\n' https://agentstow.dev/nope   # 404, served not thrown
+curl -s https://agentstow.dev/zh/nope | grep -q 'lang="zh'            # the *Chinese* 404
 curl -sI https://www.agentstow.dev        | grep -i location
 curl -sI https://agentstow.com            | grep -i location
 curl -sI https://agentstow.dev | grep -i content-security-policy      # script-src 'none'
 ```
+
+Prefer GET (`-o /dev/null -w '%{http_code}'`) over HEAD (`-I`) for status checks — the edge
+answers HEAD inconsistently on freshly deployed assets. Expect a minute of intermittent
+errors right after a deploy while the new version propagates; sample a dozen requests before
+concluding anything is wrong.
