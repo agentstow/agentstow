@@ -599,3 +599,21 @@ than being force-fed 简体. The rejected alternative — a Worker with
 `run_worker_first` on the hot paths — would have contradicted wrangler.toml's
 documented no-Worker stance and put the two busiest routes on paid
 invocations.
+
+## 2026-08-15 — CI publishes releases, authenticated by OIDC, not tokens
+
+The runbook's founding rule was "CI builds and verifies; it never publishes."
+Frank reversed that for 1.1.2: a `vX.Y.Z` tag push now publishes to crates.io
+and npm from the release workflow. The unsettled call was the credential. A
+stored npm token was rejected on the runbook's own evidence — the account
+enforces 2FA, classic automation tokens are gone, and granular tokens that
+bypass 2FA are restricted from January 2027 — so both registries authenticate
+by OIDC trusted publishing: per-run credentials, nothing stored in repo
+secrets, provenance attestations for free. Costs accepted: a one-time
+per-package trusted-publisher configuration on each registry from the owning
+account, and a hard dependency on npm ≥ 11.5.1 in the publish job (asserted,
+not assumed). Publish jobs run only on tag pushes, a guard job refuses a tag
+that disagrees with `Cargo.toml`, and both publishers skip versions the
+registry already has, so a re-run after a partial release converges instead
+of tripping on publish-over-existing errors. The manual OTP path survives in
+the runbook as the fallback.

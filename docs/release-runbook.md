@@ -1,7 +1,29 @@
 # Release runbook
 
-Everything here is manual and outward-facing. CI builds and verifies; it never
-publishes. `scripts/verify-packaging.sh` runs the same checks locally.
+Since 1.1.2 a release is published by CI: pushing a `vX.Y.Z` tag makes the
+`release` workflow build, verify, and — only on the tag push — publish to
+crates.io and npm. Both registries are authenticated with **OIDC trusted
+publishing**: the workflow mints short-lived credentials per run, so there is
+no long-lived token to store, rotate, or leak, and npm's 2FA enforcement is
+satisfied without an OTP. `scripts/verify-packaging.sh` runs the same
+verification locally.
+
+## One-time setup — trusted publishing on both registries
+
+Done once per registry from the owning account (`soulmachine`); a publish from
+CI fails with an auth error until this exists.
+
+- **crates.io** — <https://crates.io/crates/agentstow/settings> → *Trusted
+  Publishing* → *Add*: repository owner `agentstow`, repository name
+  `agentstow`, workflow filename `release.yml`, environment left blank.
+- **npm** — for **each of the five packages** (`agentstow`,
+  `@agentstow/darwin-arm64`, `@agentstow/darwin-x64`,
+  `@agentstow/linux-arm64`, `@agentstow/linux-x64`): package page → *Settings*
+  → *Trusted Publisher* → *GitHub Actions*: organization `agentstow`,
+  repository `agentstow`, workflow filename `release.yml`, environment left
+  blank. Trusted publishing also generates provenance attestations; the
+  `repository` field every package already carries must keep matching the
+  GitHub repo or the publish is rejected.
 
 ## Prerequisites — both settled 2026-08-13
 
@@ -69,11 +91,21 @@ npm packages stay in lockstep by construction — a release is a one-line bump.
    toolchain.
 2. `./scripts/verify-packaging.sh` — must end with *Local packaging checks
    passed* and no blocked packages.
-3. Commit, tag `vX.Y.Z`, push the tag. The `release` workflow cross-builds all
-   four targets, assembles the packages, installs them offline and dry-run
-   publishes. Download the `npm-packages` artifact.
-4. `cargo publish`.
-5. Publish the **platform packages first**, then the launcher:
+3. Commit, tag `vX.Y.Z`, push the tag. The tag must match `Cargo.toml` — a
+   `guard` job fails the run otherwise. The `release` workflow cross-builds
+   all four targets, assembles the packages, installs them offline, dry-run
+   publishes, then publishes the crate and all five npm packages. Publish
+   jobs run only on the tag push — never for `workflow_dispatch` or pull
+   requests.
+4. Verify as described below once the workflow is green.
+
+## Manual fallback
+
+If CI publishing is unavailable, publish by hand from the workflow's
+`npm-packages` artifact (or a local `scripts/build-npm.sh dist`):
+
+1. `cargo publish`.
+2. Publish the **platform packages first**, then the launcher:
    ```sh
    for target in darwin-arm64 darwin-x64 linux-arm64 linux-x64; do
      (cd "dist/$target" && npm publish --access public)
@@ -84,7 +116,11 @@ npm packages stay in lockstep by construction — a release is a one-line bump.
    dependencies; publishing it first leaves a window where installing it
    resolves nothing and the binary is missing.
    `--access public` is required: scoped packages default to restricted.
-6. **Wait for propagation before verifying.** A package name that is new to the
+   CI publishes in this same order.
+
+## Verifying
+
+1. **Wait for propagation before verifying.** A package name that is new to the
    registry is not readable the instant `npm publish` returns, even though the
    upload succeeded. On the 1.0.0 release all four `@agentstow/*` packages
    returned `PUT 200` and then 404 on `GET` for several minutes, appearing one
@@ -95,7 +131,7 @@ npm packages stay in lockstep by construction — a release is a one-line bump.
    ```sh
    until curl -sf -o /dev/null https://registry.npmjs.org/@agentstow%2Fdarwin-arm64; do sleep 15; done
    ```
-7. Verify from a clean directory, with the cache cleared so a stale packument
+2. Verify from a clean directory, with the cache cleared so a stale packument
    cannot mask the result:
    ```sh
    npm cache clean --force
@@ -104,9 +140,12 @@ npm packages stay in lockstep by construction — a release is a one-line bump.
 
 ## Notes
 
-- **2FA.** The account enforces 2FA for publishing. `npm publish` prompts for a
-  one-time code; `--otp=<code>` skips the browser round trip. Granular tokens
-  that bypass 2FA are being restricted from January 2027, so plan on the OTP.
+- **2FA.** The account enforces 2FA for publishing. CI is untouched by this:
+  trusted publishing mints per-run credentials that satisfy the enforcement
+  without an OTP. The **manual fallback** still prompts — `--otp=<code>` skips
+  the browser round trip. Granular tokens that bypass 2FA are being restricted
+  from January 2027, which is exactly why CI uses trusted publishing and not a
+  stored token.
 - **No install hooks, ever.** The packages carry no `preinstall`, `install` or
   `postinstall` script. That is what makes an install work offline and inside a
   sandboxed CI, and it is asserted by both the local script and the workflow.
