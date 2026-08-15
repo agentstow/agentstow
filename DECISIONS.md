@@ -652,3 +652,14 @@ and is the only target whose binary CI never executes. The first publish of
 the two new npm packages cannot use trusted publishing (npm only trusts
 publishers of packages that exist), so bootstrapping them is a one-time
 manual publish before v1.2.0 can be tagged.
+
+## 2026-08-15 — Site deploys moved from GitHub Actions to Workers Builds
+
+The 2026-08-13 decision to keep site deploys in Actions is reversed, by human
+call, to converge with openroutine: both repos now deploy `site/` through
+Cloudflare's Workers Builds GitHub App (root `site`, watch path `site/*`,
+previews on non-production branches). `deploy-site.yml` is deleted, the
+`CF_DEPLOY_TOKEN` repo secret removed, and the Cloudflare-side token revoked;
+the workflow's smoke checks moved into site/DEPLOY.md §Verifying. The
+2026-08-13 finding that connecting is dashboard-only still holds — the
+connection was made by hand in the dashboard. Commit 5a817e7.
