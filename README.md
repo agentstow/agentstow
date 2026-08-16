@@ -100,4 +100,12 @@ out whatever is in the Commons, whoever put it there.
 On Windows, creating symlinks requires Developer Mode (Settings → System → For
 developers) or an elevated shell; `sync` says exactly that when it cannot link.
 
+## Name and inspiration
+
+The name is a nod to [GNU Stow](https://www.gnu.org/software/stow/), the classic symlink-farm
+manager — agentstow does for agent configs what Stow does for dotfiles. The project is also
+inspired by two neighbours in the same space:
+[dotagents](https://github.com/iannuttall/dotagents) and
+[agentsync](https://github.com/spxrogers/agentsync).
+
 [Documentation](https://agentstow.dev/docs) · [agentstow.dev](https://agentstow.dev) · MIT
