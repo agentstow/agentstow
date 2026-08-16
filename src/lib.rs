@@ -115,6 +115,12 @@ pub fn run(
             cli::McpCommand::Remove { name } => {
                 mcp_cmd::remove(&env, &config, &mut reporter, &name)
             }
+            cli::McpCommand::Disable { name } => {
+                mcp_cmd::disable(&env, &config, &mut reporter, &name)
+            }
+            cli::McpCommand::Enable { name } => {
+                mcp_cmd::enable(&env, &config, &mut reporter, &name)
+            }
         },
         cli::Command::Doctor => doctor::run(&env, &config, &mut reporter),
     }

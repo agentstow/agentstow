@@ -315,11 +315,24 @@ fn sync_mcp(survey: &mcp::Survey, r: &mut Reporter, dry_run: bool) -> usize {
         return changing.len();
     }
 
+    // A Disabled server's leftover render leaves through the one deletion
+    // primitive: its name is still in the Commons, so the removal rests on the
+    // same name identity as the write that put it there.
+    let (removals, writes): (Vec<&mcp::Item>, Vec<&mcp::Item>) = changing
+        .into_iter()
+        .partition(|i| i.state == mcp::State::Disabled);
+
     // One agent's write failing must not cancel the others: everything was
     // already resolved before any file was opened, so the remaining writes are
     // still correct. Each failure is reported and the run ends non-clean.
     let mut written = 0usize;
-    for (path, group) in by_file(&changing) {
+    for item in &removals {
+        match mcp::strip(&item.path, item.root_key, item.format, &item.name) {
+            Ok(_) => written += 1,
+            Err(e) => r.problem(e.to_string()),
+        }
+    }
+    for (path, group) in by_file(&writes) {
         let root_key = group[0].root_key;
         match mcp::apply(path, root_key, group[0].format, &group) {
             Ok(report) => {

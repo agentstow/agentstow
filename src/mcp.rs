@@ -10,7 +10,10 @@
 //!
 //! * `sync` never *deletes* a server. A name that has gone from the Commons is
 //!   indistinguishable from one a user added by hand, so removal is an explicit
-//!   act (`mcp remove`), not something inferred.
+//!   act (`mcp remove`), not something inferred. A Disabled server is not that
+//!   case: its name is still in the Commons, carrying `"disabled": true`, so
+//!   removing its renders on sync rests on the same name identity as writing
+//!   them did — "renders nowhere" includes renders already made.
 //! * Resolved `${env:VAR}` values never reach the [`Reporter`]. Notes name the
 //!   *keys* that changed, never the values, so the redaction guarantee is
 //!   structural rather than a discipline applied at each call site.
@@ -42,11 +45,15 @@ pub enum State {
     /// In the Commons and in this agent's config, but no longer allowlisted for
     /// it. Reported so a narrowed allowlist does not leave leftovers unnoticed.
     Stranded,
+    /// In the Commons with `"disabled": true`, yet still present in this
+    /// agent's config. A Disabled server renders nowhere, and that includes
+    /// renders already made — `sync` removes this one by name.
+    Disabled,
 }
 
 impl State {
     pub fn needs_change(&self) -> bool {
-        matches!(self, State::Missing | State::Drifted)
+        matches!(self, State::Missing | State::Drifted | State::Disabled)
     }
 
     /// A Foreign server is somebody else's, so it is reported but never
@@ -63,6 +70,7 @@ impl State {
             State::Foreign => "foreign",
             State::Excluded => "excluded",
             State::Stranded => "stranded",
+            State::Disabled => "disabled",
         }
     }
 }
@@ -124,6 +132,7 @@ impl Item {
             State::Stranded => {
                 "still here but no longer allowlisted — `agentstow mcp remove` clears it".into()
             }
+            State::Disabled => "disabled in the Commons — will be removed".into(),
         }
     }
 }
@@ -161,6 +170,25 @@ pub fn survey(env: &Env, config: &Config, commons_file: &Path) -> Survey {
         }
     };
 
+    survey_map(env, config, &servers, &mut survey);
+    survey
+}
+
+/// The per-server slice of a survey: one name, one spec, every Target.
+///
+/// `mcp enable` uses this to prove the render works *before* the Commons write
+/// lands, passing the entry as it will be once the `disabled` key is cleared.
+/// Entries for other servers found in a Target's config surface as Foreign;
+/// the caller filters by name.
+pub fn survey_one(env: &Env, config: &Config, name: &str, spec: &Value) -> Survey {
+    let mut survey = Survey::default();
+    let mut servers = BTreeMap::new();
+    servers.insert(name.to_string(), spec.clone());
+    survey_map(env, config, &servers, &mut survey);
+    survey
+}
+
+fn survey_map(env: &Env, config: &Config, servers: &BTreeMap<String, Value>, survey: &mut Survey) {
     for target in target::resolve(env, config) {
         let Some(agent) = target.agent else {
             continue;
@@ -187,7 +215,26 @@ pub fn survey(env: &Env, config: &Config, commons_file: &Path) -> Survey {
             }
         };
 
-        for (name, spec) in &servers {
+        for (name, spec) in servers {
+            if is_disabled(spec) {
+                // Defined but rendered nowhere. Nothing to write — and an
+                // entry still present from before the server was disabled is
+                // work: `sync` removes it by name.
+                if existing_servers.contains_key(name) {
+                    survey.items.push(Item {
+                        target: target.name.clone(),
+                        name: name.clone(),
+                        path: path.clone(),
+                        root_key,
+                        format,
+                        state: State::Disabled,
+                        rendered: None,
+                        changed_keys: Vec::new(),
+                        holds_secret: false,
+                    });
+                }
+                continue;
+            }
             if !config.mcp_allows(name, &target.name) {
                 // Scoped away from this agent: nothing to render, but say so if
                 // an earlier sync already put it there.
@@ -261,8 +308,16 @@ pub fn survey(env: &Env, config: &Config, commons_file: &Path) -> Survey {
             });
         }
     }
+}
 
-    survey
+/// Whether a Commons entry carries agentstow's `"disabled": true`.
+///
+/// The key is agentstow's own state on the entry, not server config — the file
+/// is the interface, and `mcp enable|disable` are sugar over it. A hand-set
+/// value behaves identically. `read_commons` has already refused any
+/// non-boolean value, so absent and `false` are the only other shapes here.
+pub fn is_disabled(spec: &Value) -> bool {
+    spec.get(DISABLED).and_then(Value::as_bool).unwrap_or(false)
 }
 
 /// Whether a Commons entry references the environment, and so renders to a value
@@ -423,6 +478,18 @@ fn read_commons(path: &Path) -> Result<BTreeMap<String, Value>, Error> {
                 message: format!("{}: server `{name}` must be an object", path.display()),
             });
         }
+        // `disabled` is agentstow's key, so its shape is agentstow's to
+        // police: anything but a boolean has no meaning to fall back on.
+        if let Some(flag) = spec.get(DISABLED)
+            && !flag.is_boolean()
+        {
+            return Err(Error {
+                message: format!(
+                    "{}: server `{name}`: `disabled` must be true or false",
+                    path.display()
+                ),
+            });
+        }
     }
 
     Ok(map
@@ -522,6 +589,10 @@ fn transport(spec: &Map<String, Value>) -> Transport {
 /// Keys every dialect handles itself, and so must not pass through verbatim.
 const TRANSLATED: &[&str] = &["type", "command", "args", "env", "url", "headers"];
 
+/// The one key on a Commons entry that is agentstow's rather than the
+/// server's. It marks the entry Disabled and must never reach a render.
+pub const DISABLED: &str = "disabled";
+
 /// Copy the keys agentstow does not model, so an agent-specific setting the
 /// user wrote in the Commons still reaches its agent.
 fn passthrough(spec: &Map<String, Value>, out: &mut Map<String, Value>) {
@@ -595,11 +666,16 @@ fn render_dialect(
     env: &Env,
     resolve: bool,
 ) -> Result<Value, Error> {
-    let resolved = if resolve {
+    let mut resolved = if resolve {
         resolve_refs(name, spec, env)?
     } else {
         spec.clone()
     };
+    // `disabled` marks the Commons entry, it does not configure the server:
+    // no dialect translates it, and passthrough must not carry it either.
+    if let Some(fields) = resolved.as_object_mut() {
+        fields.shift_remove(DISABLED);
+    }
     let Some(fields) = resolved.as_object() else {
         return Ok(resolved);
     };

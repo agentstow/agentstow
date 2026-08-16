@@ -1,11 +1,15 @@
-//! `agentstow mcp list | adopt | remove`.
+//! `agentstow mcp list | adopt | remove | enable | disable`.
 //!
 //! `remove` is the one operation in the whole tool that deletes something from
 //! a Target. That is deliberate: without state, a name that has vanished from
 //! the Commons cannot be told apart from one a user added by hand, so removal has
 //! to be asked for by name rather than inferred (ADR-0002).
+//!
+//! `enable` and `disable` are sugar over the Commons file: the state is
+//! `"disabled": true` on the server's entry, the file remains the interface,
+//! and a hand-set key behaves identically on the next sync.
 
-use serde_json::json;
+use serde_json::{Value, json};
 use std::collections::BTreeMap;
 
 use crate::commons::{self, Commons};
@@ -41,13 +45,14 @@ pub fn list(env: &Env, config: &Config, r: &mut Reporter, as_json: bool) -> i32 
         r.problem(skipped.clone());
     }
 
-    let commons_names: Vec<String> = match mcp::commons_servers(&commons_file) {
-        Ok(servers) => servers.keys().cloned().collect(),
+    let commons_servers = match mcp::commons_servers(&commons_file) {
+        Ok(servers) => servers,
         Err(e) => {
             r.problem(e.to_string());
             return EXIT_ERROR;
         }
     };
+    let commons_names: Vec<String> = commons_servers.keys().cloned().collect();
 
     // Group by server name, Commons servers first, then anything Foreign.
     let mut names = commons_names.clone();
@@ -81,9 +86,10 @@ pub fn list(env: &Env, config: &Config, r: &mut Reporter, as_json: bool) -> i32 
             .collect();
         actionable += rows.iter().filter(|row| row.state.actionable()).count();
         let managed = commons_names.contains(name);
+        let disabled = commons_servers.get(name).is_some_and(mcp::is_disabled);
 
         if as_json {
-            payload.push(json!({
+            let mut server = json!({
                 "name": name,
                 "managed": managed,
                 "targets": rows.iter().map(|row| json!({
@@ -91,9 +97,17 @@ pub fn list(env: &Env, config: &Config, r: &mut Reporter, as_json: bool) -> i32 
                     "state": row.state.label(),
                     "actionable": row.state.actionable(),
                 })).collect::<Vec<_>>(),
-            }));
+            });
+            if disabled {
+                server["disabled"] = Value::Bool(true);
+            }
+            payload.push(server);
         } else {
-            let origin = if managed {
+            // Only a Commons server can be Disabled, so the annotation
+            // subsumes the origin.
+            let origin = if disabled {
+                "disabled"
+            } else if managed {
                 "Commons"
             } else {
                 "not in the Commons"
@@ -168,6 +182,166 @@ pub fn remove(env: &Env, config: &Config, r: &mut Reporter, name: &str) -> i32 {
         return EXIT_ERROR;
     }
     r.line(format!("removed {name} from the Commons"));
+
+    if r.problem_count() > 0 {
+        EXIT_ERROR
+    } else {
+        EXIT_CLEAN
+    }
+}
+
+/// Park a server: set `"disabled": true` on its Commons entry and remove its
+/// renders now. The definition and its rules are kept — `enable` restores it
+/// everywhere without retyping.
+pub fn disable(env: &Env, config: &Config, r: &mut Reporter, name: &str) -> i32 {
+    let commons = Commons::new(env.commons());
+    let commons_file = commons.root().join(commons::MCP);
+
+    let mut servers = match mcp::commons_servers(&commons_file) {
+        Ok(servers) => servers,
+        Err(e) => {
+            r.problem(e.to_string());
+            return EXIT_ERROR;
+        }
+    };
+
+    let Some(entry) = servers.get(name) else {
+        r.problem(format!(
+            "`{name}` is not in the Commons — agentstow only disables servers it manages"
+        ));
+        return EXIT_ERROR;
+    };
+    if mcp::is_disabled(entry) {
+        r.line(format!("{name} is already disabled"));
+        return EXIT_CLEAN;
+    }
+
+    let _lock = match crate::lock::acquire(env.state_dir(), crate::lock::timeout(env)) {
+        Ok(guard) => guard,
+        Err(e) => {
+            r.problem(e.to_string());
+            return EXIT_ERROR;
+        }
+    };
+
+    // Targets first, then the Commons — `mcp remove`'s order: at every point
+    // in between, what remains is still coherent. Stripped-but-not-yet-marked
+    // is just a missing render the Commons would restore; the rules in
+    // agentstow.toml are not touched, because the server is parked, not gone.
+    for target in target::resolve(env, config) {
+        let Some((path, root_key, format)) = mcp_destination(env, &target) else {
+            continue;
+        };
+        match mcp::strip(&path, root_key, format, name) {
+            Ok(Some(_)) => r.line(format!("removed {name} from {}", target.name)),
+            Ok(None) => {}
+            Err(e) => r.problem(e.to_string()),
+        }
+    }
+
+    if let Some(Value::Object(fields)) = servers.get_mut(name) {
+        fields.insert(mcp::DISABLED.into(), Value::Bool(true));
+    }
+    if let Err(e) = mcp::commons_write(&commons_file, &servers) {
+        r.problem(e.to_string());
+        return EXIT_ERROR;
+    }
+    r.line(format!(
+        "disabled {name} — definition kept; enable restores it everywhere"
+    ));
+
+    if r.problem_count() > 0 {
+        EXIT_ERROR
+    } else {
+        EXIT_CLEAN
+    }
+}
+
+/// Restore a Disabled server: clear the key from its Commons entry and render
+/// it back into every targeted agent config now.
+pub fn enable(env: &Env, config: &Config, r: &mut Reporter, name: &str) -> i32 {
+    let commons = Commons::new(env.commons());
+    let commons_file = commons.root().join(commons::MCP);
+
+    let mut servers = match mcp::commons_servers(&commons_file) {
+        Ok(servers) => servers,
+        Err(e) => {
+            r.problem(e.to_string());
+            return EXIT_ERROR;
+        }
+    };
+
+    let Some(entry) = servers.get(name) else {
+        r.problem(format!(
+            "`{name}` is not in the Commons — agentstow only enables servers it manages"
+        ));
+        return EXIT_ERROR;
+    };
+    if !mcp::is_disabled(entry) {
+        r.line(format!("{name} is already enabled"));
+        return EXIT_CLEAN;
+    }
+
+    // Survey the entry as it will be once the key is cleared, and refuse
+    // before the first write if it cannot be rendered — an unset `${env:VAR}`
+    // must not leave the server half-enabled.
+    let mut cleared = entry.clone();
+    if let Some(fields) = cleared.as_object_mut() {
+        fields.shift_remove(mcp::DISABLED);
+    }
+    let slice = mcp::survey_one(env, config, name, &cleared);
+    if !slice.problems.is_empty() {
+        for problem in &slice.problems {
+            r.problem(problem);
+        }
+        return EXIT_ERROR;
+    }
+
+    let _lock = match crate::lock::acquire(env.state_dir(), crate::lock::timeout(env)) {
+        Ok(guard) => guard,
+        Err(e) => {
+            r.problem(e.to_string());
+            return EXIT_ERROR;
+        }
+    };
+
+    // A Target whose config could not be read still must not deny service to
+    // the others; it is reported and the run ends non-clean.
+    for skipped in &slice.skipped {
+        r.problem(skipped);
+    }
+
+    // The Commons first, then the targets: enabled-but-missing is exactly the
+    // state `sync` restores, so an interruption leaves nothing incoherent.
+    servers.insert(name.to_string(), cleared);
+    if let Err(e) = mcp::commons_write(&commons_file, &servers) {
+        r.problem(e.to_string());
+        return EXIT_ERROR;
+    }
+
+    // The per-server slice of the sync plan. One write per item is one write
+    // per file here: a server lands at most once in each config, and every
+    // apply re-reads the file it merges into.
+    for item in slice
+        .items
+        .iter()
+        .filter(|i| i.name == name && i.state.needs_change())
+    {
+        match mcp::apply(&item.path, item.root_key, item.format, &[item]) {
+            Ok(report) => {
+                r.line(format!("restored {name} to {}", item.target));
+                if report.exposed {
+                    r.warn(format!(
+                        "{} has mode {:o} — it now holds resolved secrets and can be read by others",
+                        report.path.display(),
+                        report.mode
+                    ));
+                }
+            }
+            Err(e) => r.problem(e.to_string()),
+        }
+    }
+    r.line(format!("enabled {name}"));
 
     if r.problem_count() > 0 {
         EXIT_ERROR

@@ -1,4 +1,5 @@
-//! The MCP management surface: targeting, Tweaks, and `mcp list/adopt/remove`.
+//! The MCP management surface: targeting, Tweaks, and
+//! `mcp list/adopt/remove/enable/disable`.
 
 mod common;
 
@@ -468,6 +469,220 @@ fn adoption_never_prints_a_secret_it_found() {
 
     out.assert_clean()
         .assert_no_output_contains("AGENTSTOW-CANARY-adopt");
+}
+
+// ------------------------------------------------ mcp enable | disable
+
+#[test]
+fn disable_removes_the_renders_and_keeps_the_definition() {
+    let f = machine();
+    one_server(&f);
+    f.run(&["sync"]).assert_clean();
+
+    let out = f.run(&["mcp", "disable", "serena"]);
+
+    out.assert_clean()
+        .assert_stdout_has("removed serena from claude")
+        .assert_stdout_has("disabled serena — definition kept; enable restores it everywhere");
+    assert!(f.json(".claude.json")["mcpServers"].get("serena").is_none());
+    assert!(!f.contents(".codex/config.toml").contains("serena"));
+    assert!(
+        f.json(".cursor/mcp.json")["mcpServers"]
+            .get("serena")
+            .is_none()
+    );
+
+    let commons: serde_json::Value =
+        serde_json::from_str(&f.contents_of_commons("mcp.json")).unwrap();
+    assert_eq!(
+        commons["mcpServers"]["serena"]["command"], "uvx",
+        "the definition is kept"
+    );
+    assert_eq!(commons["mcpServers"]["serena"]["disabled"], true);
+}
+
+#[test]
+fn enable_restores_everywhere_and_clears_the_key() {
+    let f = machine();
+    one_server(&f);
+    f.run(&["sync"]).assert_clean();
+    f.run(&["mcp", "disable", "serena"]).assert_clean();
+
+    let out = f.run(&["mcp", "enable", "serena"]);
+
+    out.assert_clean()
+        .assert_stdout_has("restored serena to claude")
+        .assert_stdout_has("enabled serena");
+    assert_eq!(
+        f.json(".claude.json")["mcpServers"]["serena"]["command"],
+        "uvx"
+    );
+    assert!(
+        f.contents(".codex/config.toml")
+            .contains("[mcp_servers.serena]")
+    );
+
+    let commons: serde_json::Value =
+        serde_json::from_str(&f.contents_of_commons("mcp.json")).unwrap();
+    assert!(
+        commons["mcpServers"]["serena"].get("disabled").is_none(),
+        "the key is removed entirely, not set false"
+    );
+}
+
+#[test]
+fn disabling_or_enabling_an_unknown_server_is_an_error() {
+    let f = machine();
+    one_server(&f);
+    let before = f.contents_of_commons("mcp.json");
+
+    f.run(&["mcp", "disable", "ghost"])
+        .assert_code(1)
+        .assert_stderr_has("ghost");
+    f.run(&["mcp", "enable", "ghost"])
+        .assert_code(1)
+        .assert_stderr_has("ghost");
+    assert_eq!(before, f.contents_of_commons("mcp.json"));
+}
+
+#[test]
+fn a_second_disable_or_enable_is_a_no_op() {
+    let f = machine();
+    one_server(&f);
+    f.run(&["sync"]).assert_clean();
+
+    f.run(&["mcp", "disable", "serena"]).assert_clean();
+    f.run(&["mcp", "disable", "serena"])
+        .assert_clean()
+        .assert_stdout_has("serena is already disabled");
+
+    f.run(&["mcp", "enable", "serena"]).assert_clean();
+    f.run(&["mcp", "enable", "serena"])
+        .assert_clean()
+        .assert_stdout_has("serena is already enabled");
+}
+
+#[test]
+fn a_hand_set_disabled_key_behaves_like_the_verb_on_the_next_sync() {
+    let f = machine();
+    one_server(&f);
+    f.run(&["sync"]).assert_clean();
+
+    // The file is the interface; the verb is sugar.
+    f.commons_mcp(
+        r#"{"mcpServers": {"serena": {"type": "stdio", "command": "uvx", "disabled": true}}}"#,
+    );
+
+    f.run(&["status"]).assert_code(2);
+    f.run(&["sync"]).assert_clean();
+
+    assert!(f.json(".claude.json")["mcpServers"].get("serena").is_none());
+    assert!(!f.contents(".codex/config.toml").contains("serena"));
+    f.run(&["sync"])
+        .assert_clean()
+        .assert_stdout_has("up to date");
+    f.run(&["status"]).assert_code(0);
+}
+
+#[test]
+fn a_disabled_server_is_neither_written_nor_counted_as_drift() {
+    let f = machine();
+    f.commons_mcp(r#"{"mcpServers": {"serena": {"command": "uvx", "disabled": true}}}"#);
+
+    f.run(&["sync"])
+        .assert_clean()
+        .assert_stdout_has("up to date");
+
+    assert!(
+        !f.present(".claude.json"),
+        "a Disabled server renders nowhere"
+    );
+    assert!(!f.present(".cursor/mcp.json"));
+    f.run(&["status"]).assert_code(0);
+}
+
+#[test]
+fn list_marks_a_disabled_server() {
+    let f = machine();
+    f.commons_mcp(r#"{"mcpServers": {"serena": {"command": "uvx", "disabled": true}}}"#);
+
+    f.run(&["mcp", "list"])
+        .assert_code(0)
+        .assert_stdout_has("serena  (disabled)");
+
+    let out = f.run(&["mcp", "list", "--json"]);
+    out.assert_code(0);
+    let parsed: serde_json::Value = serde_json::from_str(&out.stdout).unwrap();
+    let serena = parsed["servers"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|s| s["name"] == "serena")
+        .unwrap();
+    assert_eq!(serena["disabled"], true);
+    assert_eq!(serena["managed"], true);
+}
+
+#[test]
+fn foreign_servers_and_other_keys_survive_both_verbs_byte_for_byte() {
+    let f = machine();
+    one_server(&f);
+    f.file(
+        ".claude.json",
+        r#"{"numStartups": 9, "mcpServers": {"handmade": {"command": "mine"}}}"#,
+    );
+    f.run(&["sync"]).assert_clean();
+    let claude_before = f.contents(".claude.json");
+
+    f.run(&["mcp", "disable", "serena"]).assert_clean();
+
+    let config = f.json(".claude.json");
+    assert_eq!(config["numStartups"], 9);
+    assert_eq!(config["mcpServers"]["handmade"]["command"], "mine");
+
+    f.run(&["mcp", "enable", "serena"]).assert_clean();
+
+    assert_eq!(
+        claude_before,
+        f.contents(".claude.json"),
+        "a disable/enable round trip must put the file back exactly"
+    );
+}
+
+#[test]
+fn a_non_boolean_disabled_value_is_a_named_survey_problem() {
+    let f = machine();
+    f.commons_mcp(r#"{"mcpServers": {"serena": {"command": "uvx", "disabled": "yes"}}}"#);
+
+    f.run(&["sync"])
+        .assert_code(1)
+        .assert_stderr_has("serena")
+        .assert_stderr_has("`disabled` must be true or false");
+    f.run(&["status"]).assert_code(1);
+    f.run(&["mcp", "list"]).assert_code(1);
+}
+
+#[test]
+fn the_disabled_key_never_reaches_a_rendered_config() {
+    let f = machine();
+    // An explicit false renders like an absent key — and stays agentstow's.
+    f.commons_mcp(r#"{"mcpServers": {"serena": {"command": "uvx", "disabled": false}}}"#);
+
+    f.run(&["sync"]).assert_clean();
+
+    assert!(
+        f.json(".claude.json")["mcpServers"]["serena"]
+            .get("disabled")
+            .is_none(),
+        "the standard dialect must not pass the key through"
+    );
+    assert!(!f.contents(".codex/config.toml").contains("disabled"));
+    assert!(
+        f.json(".cursor/mcp.json")["mcpServers"]["serena"]
+            .get("disabled")
+            .is_none()
+    );
+    assert!(!f.contents(".gemini/settings.json").contains("disabled"));
 }
 
 // ------------------------------------------------- Regressions from review

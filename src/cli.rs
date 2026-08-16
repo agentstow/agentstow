@@ -77,4 +77,14 @@ pub enum McpCommand {
         /// The server name.
         name: String,
     },
+    /// Park a server: keep its definition, render it nowhere.
+    Disable {
+        /// The server name.
+        name: String,
+    },
+    /// Restore a disabled server to every targeted agent.
+    Enable {
+        /// The server name.
+        name: String,
+    },
 }

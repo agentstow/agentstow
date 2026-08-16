@@ -887,3 +887,23 @@ user's, and the one sanctioned edit gets one equally narrow undo. Fourth,
 the MCP sweep ignores allowlists: any entry in this agent's config whose
 name is in the Commons is Managed wherever it appears, so a rule scoping
 the server elsewhere does not shield a stale copy from the teardown.
+
+## 2026-08-16 — Sync removes a Disabled server's renders; never-delete stands
+
+The 2026-08-13 rule — `sync` never deletes an MCP server — exists because,
+without state, a name that has vanished from the Commons is indistinguishable
+from one the user added by hand, and deleting on that evidence would
+eventually delete someone's hand-added server. A Disabled server presents the
+opposite evidence: its name has not vanished. It is right there in the
+Commons, carrying `"disabled": true`, so an entry under that name in an
+agent's config is Managed under exactly the name identity every write relies
+on, and the Commons file itself says to render it nowhere. Removal on sync is
+therefore name-identity-safe — `sync` still deletes nothing whose name the
+Commons does not claim — and it is what "renders nowhere" has to mean once a
+hand-set key (the file is the interface) can disable a server that
+yesterday's sync rendered. Without it, hand-disabling would strand renders
+forever: `status` calling the machine clean while every agent still runs the
+server. So a name absent from the Commons is never deleted (that remains
+`mcp remove`'s job, by explicit request), while a name present and marked
+disabled has its renders removed by name through the same `strip` primitive
+`mcp remove` uses; until then `status` counts each leftover as actionable.
