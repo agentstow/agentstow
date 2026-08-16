@@ -1,9 +1,11 @@
 //! `adopt` — the on-ramp from a hand-rolled setup, and the cure for an
-//! accidental Variant. Three cases, no force flag.
+//! accidental Variant. One verb, three mechanics, no force flag.
 
 mod common;
 
-use common::Fixture;
+use std::collections::BTreeSet;
+
+use common::{Fixture, Outcome};
 
 fn machine() -> Fixture {
     let f = Fixture::new();
@@ -161,7 +163,7 @@ fn something_already_linked_has_nothing_to_adopt() {
 }
 
 #[test]
-fn a_path_outside_every_target_is_refused() {
+fn a_path_outside_every_target_and_family_is_refused() {
     let f = machine();
     f.file("somewhere/else/thing.md", "not in a target\n");
 
@@ -170,7 +172,8 @@ fn a_path_outside_every_target_is_refused() {
         &f.path("somewhere/else/thing.md").display().to_string(),
     ])
     .assert_code(1)
-    .assert_stderr_has("not somewhere agentstow manages");
+    .assert_stderr_has("parent directory \"else\" is not a family")
+    .assert_stderr_has("skills/, commands/, or agents/");
 }
 
 #[test]
@@ -217,9 +220,11 @@ fn claudes_own_file_is_never_adopted_wholesale() {
     let f = machine();
     f.file(".claude/CLAUDE.md", "# claude's own notes\n");
 
+    // No surface claims it, and `.claude` is no family — the file stays the
+    // user's own.
     f.run(&["adopt", &f.path(".claude/CLAUDE.md").display().to_string()])
         .assert_code(1)
-        .assert_stderr_has("not somewhere agentstow manages");
+        .assert_stderr_has("parent directory \".claude\" is not a family");
 }
 
 // ---- the Source mechanic ----
@@ -423,16 +428,153 @@ fn a_repo_path_under_a_non_family_parent_is_refused() {
     .assert_stderr_has("skills/, commands/, or agents/");
 }
 
-#[test]
-fn a_family_parent_without_a_repo_still_refuses() {
-    let f = machine();
-    // The parent basename alone never triggers the Source mechanic — only a
-    // durable home does. Without `.git` above, the existing refusal stands.
-    f.file("loose/skills/thing/SKILL.md", "no durable home\n");
+// ---- the Copy mechanic ----
 
-    f.run(&["adopt", &f.path("loose/skills/thing").display().to_string()])
+#[test]
+fn a_family_path_with_no_repo_above_copies_in_and_fans_out() {
+    let f = machine();
+    f.file("loose/skills/research/SKILL.md", "no durable home\n");
+    let path = f.path("loose/skills/research");
+
+    let out = f.run(&["adopt", &path.display().to_string()]);
+
+    out.assert_clean()
+        .assert_stdout_has("adopted research — copied into the Commons (skills)")
+        .assert_stdout_has(&format!(
+            "  the original at {} is no longer consulted; edits there will \
+             diverge from the Commons copy",
+            path.display()
+        ))
+        .assert_stdout_has("linked into claude (.claude/skills)")
+        .assert_stdout_has("linked into codex (.codex/skills)")
+        .assert_stdout_lacks("Sourced");
+    assert!(
+        !f.is_symlink(".agents/skills/research"),
+        "the Commons entry is real — a copy, not a pointer"
+    );
+    assert_eq!(
+        f.contents_of_commons("skills/research/SKILL.md"),
+        "no durable home\n"
+    );
+
+    // The original is untouched, and nothing anywhere points back at it.
+    assert!(f.is_real_dir("loose/skills/research"));
+    assert_eq!(
+        f.contents("loose/skills/research/SKILL.md"),
+        "no durable home\n"
+    );
+    for entry in f.tree() {
+        if let Some((_, target)) = entry.split_once(" -> ") {
+            assert!(
+                !target.contains("loose"),
+                "nothing may point back at the original: {entry}"
+            );
+        }
+    }
+
+    f.run(&["sync"])
+        .assert_clean()
+        .assert_stdout_has("Everything is up to date.");
+}
+
+#[test]
+fn a_symlink_input_is_copied_through_to_its_content() {
+    let f = machine();
+    f.file("lib/research/SKILL.md", "the real copy\n");
+    f.symlink("loose/skills/research", "../../lib/research");
+
+    f.run(&[
+        "adopt",
+        &f.path("loose/skills/research").display().to_string(),
+    ])
+    .assert_clean();
+
+    assert!(
+        !f.is_symlink(".agents/skills/research"),
+        "the content is copied through the link — the Commons entry is real"
+    );
+    assert_eq!(
+        f.contents_of_commons("skills/research/SKILL.md"),
+        "the real copy\n"
+    );
+    assert!(
+        f.is_symlink("loose/skills/research"),
+        "the original link is untouched"
+    );
+}
+
+#[test]
+fn dry_run_of_a_copy_changes_nothing_and_previews_the_real_run() {
+    let f = machine();
+    f.file("loose/skills/research/SKILL.md", "no durable home\n");
+    let path = f.path("loose/skills/research").display().to_string();
+    let before = f.tree();
+
+    let dry = f.run(&["adopt", &path, "--dry-run"]);
+
+    dry.assert_clean()
+        .assert_stdout_has("dry run — no changes will be made")
+        .assert_stdout_has("copy: research — copied into the Commons (skills)")
+        .assert_stdout_has(&format!("would copy {path} into the Commons"))
+        .assert_stdout_has(&format!(
+            "  the original at {path} is no longer consulted; edits there \
+             will diverge from the Commons copy"
+        ))
+        .assert_stdout_has("would link into claude (.claude/skills)")
+        .assert_stdout_has("would link into codex (.codex/skills)");
+    assert_eq!(before, f.tree(), "--dry-run must not touch the filesystem");
+
+    // Every fan-out the dry run promised, the real run delivers verbatim.
+    let real = f.run(&["adopt", &path]);
+    real.assert_clean()
+        .assert_stdout_has("adopted research — copied into the Commons (skills)");
+    for line in dry.stdout.lines() {
+        if let Some(rest) = line.strip_prefix("  would link into ") {
+            assert!(
+                real.stdout.contains(&format!("  linked into {rest}")),
+                "the dry run promised a link into {rest:?}\nreal run:\n{}",
+                real.stdout
+            );
+        }
+    }
+}
+
+#[test]
+fn a_file_under_a_skills_parent_refuses_the_shape_mismatch() {
+    let f = machine();
+    f.file(
+        "loose/skills/notes.md",
+        "a file where a directory belongs\n",
+    );
+    let path = f.path("loose/skills/notes.md");
+    let before = f.tree();
+
+    f.run(&["adopt", &path.display().to_string()])
         .assert_code(1)
-        .assert_stderr_has("not somewhere agentstow manages");
+        .assert_stderr_has(&format!(
+            "{}: skills entries are directories — this is a file",
+            path.display()
+        ));
+    assert_eq!(before, f.tree(), "a refusal must change nothing");
+}
+
+#[test]
+fn a_directory_under_a_commands_parent_refuses_the_shape_mismatch() {
+    let f = machine();
+    f.file(
+        "loose/commands/ship/notes.md",
+        "a directory where a file belongs\n",
+    );
+    let path = f.path("loose/commands/ship");
+    let before = f.tree();
+
+    f.run(&["adopt", &path.display().to_string()])
+        .assert_code(1)
+        .assert_stderr_has(&format!(
+            "{}: commands entries are single .md files — this is a directory",
+            path.display()
+        ));
+    assert_eq!(before, f.tree(), "a refusal must change nothing");
 }
 
 #[test]
@@ -630,4 +772,156 @@ fn dry_run_never_contends_for_the_lock() {
         ],
     )
     .assert_clean();
+}
+
+// ---- the collision matrix, swept across every mechanic ----
+//
+// Four Commons collisions × three mechanics, driven through one harness. The
+// per-mechanic *action* differs only where ADR-0006 says it does — an
+// identical Commons copy makes absorb relink, source replace, copy no-op —
+// and every shared refusal and no-op must use byte-identical wording once the
+// fixture-specific paths are masked out.
+
+/// One mechanic's run of one collision case.
+struct Sweep {
+    mechanic: &'static str,
+    /// The adopted path — absolute, fixture-specific.
+    path: String,
+    home: String,
+    outcome: Outcome,
+    before: BTreeSet<String>,
+    after: BTreeSet<String>,
+}
+
+impl Sweep {
+    /// The output with fixture-specific paths masked, so wording can be
+    /// compared byte-for-byte across mechanics.
+    fn masked(&self, text: &str) -> String {
+        text.replace(&self.path, "<path>")
+            .replace(&self.home, "<home>")
+    }
+
+    fn assert_untouched(&self) {
+        assert_eq!(
+            self.before, self.after,
+            "{}: a refusal or no-op must change nothing",
+            self.mechanic
+        );
+    }
+}
+
+/// Run one collision case through all three mechanics: the same skill body at
+/// a Target-surface path (absorb), a repo path (source), and a loose path
+/// (copy), with `prepare` staging the Commons collision before each run.
+fn sweep(prepare: impl Fn(&Fixture, &str)) -> Vec<Sweep> {
+    ["absorb", "source", "copy"]
+        .into_iter()
+        .map(|mechanic| {
+            let f = machine();
+            let rel = match mechanic {
+                "absorb" => ".claude/skills/research",
+                "source" => "repo/skills/research",
+                _ => "loose/skills/research",
+            };
+            if mechanic == "source" {
+                f.file("repo/.git/HEAD", "ref: refs/heads/main\n");
+            }
+            f.file(&format!("{rel}/SKILL.md"), "the outside copy\n");
+            let path = f.path(rel).display().to_string();
+            prepare(&f, &path);
+            let before = f.tree();
+            let outcome = f.run(&["adopt", &path]);
+            Sweep {
+                mechanic,
+                home: f.home().display().to_string(),
+                after: f.tree(),
+                path,
+                outcome,
+                before,
+            }
+        })
+        .collect()
+}
+
+/// Every masked voice must be byte-identical: one matrix, one wording.
+fn assert_one_voice(voices: &[String]) {
+    assert!(
+        voices.windows(2).all(|w| w[0] == w[1]),
+        "the matrix must speak with one voice across mechanics:\n{voices:#?}"
+    );
+}
+
+#[test]
+fn matrix_an_identical_commons_copy_answers_per_mechanic() {
+    let runs = sweep(|f, _| {
+        f.commons_file("skills/research/SKILL.md", "the outside copy\n");
+    });
+    let [absorb, source, copy] = &runs[..] else {
+        unreachable!()
+    };
+
+    absorb
+        .outcome
+        .assert_clean()
+        .assert_stdout_has("identical to the Commons copy — re-linked");
+    source
+        .outcome
+        .assert_clean()
+        .assert_stdout_has("replaced the identical Commons copy with the link");
+    copy.outcome
+        .assert_clean()
+        .assert_stdout_has("skills/research is already in the Commons — nothing to do");
+    copy.assert_untouched(); // the original stays — no deletion, no link back
+}
+
+#[test]
+fn matrix_a_divergent_commons_copy_refuses_in_one_voice() {
+    let mut voices = Vec::new();
+    for s in sweep(|f, _| {
+        f.commons_file("skills/research/SKILL.md", "the commons variant\n");
+    }) {
+        s.outcome
+            .assert_code(1)
+            .assert_stderr_has("this is a Variant")
+            .assert_stderr_has("Merge it by hand");
+        s.assert_untouched();
+        voices.push(s.masked(&s.outcome.stderr));
+    }
+    assert_one_voice(&voices);
+}
+
+#[test]
+fn matrix_a_commons_link_to_the_same_place_is_a_no_op_everywhere() {
+    let mut voices = Vec::new();
+    for s in sweep(|f, path| {
+        f.commons_symlink("skills/research", path);
+    }) {
+        s.outcome.assert_clean().assert_stdout_has(&format!(
+            "skills/research is already Sourced from {} — nothing to do",
+            s.path
+        ));
+        s.assert_untouched();
+        voices.push(s.masked(&s.outcome.stdout));
+    }
+    assert_one_voice(&voices);
+}
+
+#[test]
+fn matrix_a_commons_link_pointing_elsewhere_refuses_in_one_voice() {
+    let mut voices = Vec::new();
+    for s in sweep(|f, _| {
+        f.file("elsewhere/skills/research/SKILL.md", "the other copy\n");
+        f.commons_symlink(
+            "skills/research",
+            &f.path("elsewhere/skills/research").display().to_string(),
+        );
+    }) {
+        s.outcome
+            .assert_code(1)
+            .assert_stderr_has("is already Sourced from")
+            .assert_stderr_has("remove the Commons link first if you mean to repoint it");
+        s.assert_untouched();
+        voices.push(s.masked(&s.outcome.stderr));
+    }
+    assert_one_voice(&voices);
 }

@@ -842,3 +842,26 @@ adoptable) via `symlink_metadata`, so `.git` as file or directory both count;
 and the dry-run family fan-out surveys against the not-yet-created Commons
 destination, accepting the same preview drift ticket 05 logged for
 instructions.
+
+## 2026-08-16 — Copy mechanic: absorb joins the link matrix, and the shape refusal's converse
+
+Three calls ticket 07 left open. First, the unified matrix's symlink cases now
+answer in *absorb* too, not only source and copy: the ticket's sweep demands
+all four collision cases behave identically across all three mechanics, and
+absorb previously compared contents straight through a Commons symlink — for a
+link resolving back to the input path, "identical" would have authorized
+deleting the only real copy. The symlink answer therefore precedes any content
+comparison in every mechanic, via one shared helper (`existing_link_answer`),
+so the no-op and repoint wordings are byte-identical everywhere; for an
+instructions-surface absorb the entry is labeled `AGENTS.md`. Second, the
+ticket gave only the directory-family shape refusal ("skills entries are
+directories — this is a file"); the Markdown converse is worded in the same
+voice as "commands entries are single .md files — this is a directory", taking
+"single .md file" from the ticket's own shape gloss. The check follows the
+symlink (`is_dir` through the link), matching copy-through semantics; a
+dangling symlink input under a directory family reads as "this is a file" —
+accepted as a rare approximation rather than a fourth wording. Third, a failed
+copy removes whatever half-copied destination it left, so an interrupted
+adopt never leaves a partial Commons entry for the next sync to fan out —
+mirroring absorb's put-it-back recovery in spirit, though here the original
+was never touched.

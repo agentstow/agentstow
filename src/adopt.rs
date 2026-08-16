@@ -1,13 +1,14 @@
 //! `adopt` — one verb; where the path lives picks the mechanic (ADR-0006).
 //!
-//! Two mechanics so far. **Absorb**: a real file or directory in a Target
-//! surface moves into the Commons and leaves a relative link behind. **Source**:
-//! a path whose home is a git repo — a `.git` directory or file found walking
+//! Three mechanics. **Absorb**: a real file or directory in a Target surface
+//! moves into the Commons and leaves a relative link behind. **Source**: a
+//! path whose home is a git repo — a `.git` directory or file found walking
 //! up — stays where it is, and the Commons gains an absolute symlink to it,
-//! the path exactly as given and never resolved through. Either way the entry
-//! fans out to every installed agent through the same machinery `sync` uses —
-//! so a sync immediately after has nothing to say. External paths with no repo
-//! still refuse; the Copy mechanic comes next.
+//! the path exactly as given and never resolved through. **Copy**: everything
+//! else has no durable home worth pointing at — the content is copied in, the
+//! original stays, and nothing points back. Every mechanic ends by fanning
+//! the entry out to every installed agent through the same machinery `sync`
+//! uses — so a sync immediately after has nothing to say.
 //!
 //! No `--force`, ever. Refusing to merge a divergence by hand is the point:
 //! silently discarding one side of it is exactly the failure mode this tool is
@@ -64,14 +65,8 @@ pub fn run(env: &Env, config: &Config, r: &mut Reporter, raw_path: &str, dry_run
         // A `.git` above the path — directory or file, covering worktrees and
         // submodules — means the content has a durable home: Source it.
         None if in_git_repo(&path) => source(env, config, &commons, &path, r, dry_run),
-        None => {
-            r.problem(format!(
-                "{} is not somewhere agentstow manages — \
-                 run `agentstow doctor` to see the directories it syncs",
-                path.display()
-            ));
-            EXIT_ERROR
-        }
+        // No surface, no repo above: no durable home worth pointing at. Copy.
+        None => copy(env, config, &commons, &path, r, dry_run),
     }
 }
 
@@ -105,6 +100,20 @@ fn absorb(
         .map(|n| n.to_string_lossy().into_owned())
         .unwrap_or_default();
     let destination = commons.root().join(&placement.commons_rel);
+
+    // A Commons symlink under this name belongs to the unified matrix, and it
+    // must answer before any content comparison: relinking through a link that
+    // resolves right back here would destroy the only real copy.
+    if fs::symlink_metadata(&destination)
+        .map(|m| m.file_type().is_symlink())
+        .unwrap_or(false)
+    {
+        let entry = match placement.surface {
+            Surface::FanOut(family) => format!("{}/{file_name}", family.name()),
+            Surface::Instructions => commons::INSTRUCTIONS.to_string(),
+        };
+        return existing_link_answer(&entry, &destination, path, r);
+    }
 
     // Everything is decided before the lock is taken, so a refusal leaves the
     // machine exactly as it was — not even a lock file.
@@ -258,22 +267,7 @@ fn source(
     r: &mut Reporter,
     dry_run: bool,
 ) -> i32 {
-    let parent_name = path
-        .parent()
-        .and_then(|p| p.file_name())
-        .map(|n| n.to_string_lossy().into_owned())
-        .unwrap_or_default();
-    let Some(family) = Family::ALL
-        .iter()
-        .copied()
-        .find(|f| f.name() == parent_name)
-    else {
-        r.problem(format!(
-            "{}: parent directory \"{parent_name}\" is not a family — \
-             adopt takes paths from {}",
-            path.display(),
-            family_list()
-        ));
+    let Some(family) = family_from_parent(path, r) else {
         return EXIT_ERROR;
     };
 
@@ -289,21 +283,7 @@ fn source(
     let mut replace = false;
     if let Ok(meta) = fs::symlink_metadata(&destination) {
         if meta.file_type().is_symlink() {
-            let text = fs::read_link(&destination).unwrap_or_default();
-            let resolved = link::resolve_link(&destination, &text);
-            if same_place(&resolved, path) {
-                r.line(format!(
-                    "{entry} is already Sourced from {} — nothing to do",
-                    path.display()
-                ));
-                return EXIT_CLEAN;
-            }
-            r.problem(format!(
-                "{entry} is already Sourced from {} — remove the Commons link \
-                 first if you mean to repoint it",
-                resolved.display()
-            ));
-            return EXIT_ERROR;
+            return existing_link_answer(&entry, &destination, path, r);
         }
         if !link::same_contents(path, &destination) {
             r.problem(divergence_message(path, &destination));
@@ -387,6 +367,130 @@ fn source(
     r.verdict()
 }
 
+/// The Copy mechanic: an external path with no durable home is copied into
+/// the Commons — a real copy, not a move. The original stays, nothing points
+/// back, and the message says so out loud: a deliberate divorce, not a
+/// managed relationship (ADR-0006). A symlink input is copied *through* — the
+/// content it resolves to, `fs::copy` semantics.
+fn copy(
+    env: &Env,
+    config: &Config,
+    commons: &Commons,
+    path: &Path,
+    r: &mut Reporter,
+    dry_run: bool,
+) -> i32 {
+    let Some(family) = family_from_parent(path, r) else {
+        return EXIT_ERROR;
+    };
+
+    // The family fixes the shape. locate() implied it for surface paths; an
+    // external path may hand us either, so a mismatch refuses here.
+    let complaint = match family.shape() {
+        Shape::Directory if !path.is_dir() => Some("entries are directories — this is a file"),
+        Shape::Markdown if path.is_dir() => {
+            Some("entries are single .md files — this is a directory")
+        }
+        _ => None,
+    };
+    if let Some(complaint) = complaint {
+        r.problem(format!("{}: {} {complaint}", path.display(), family.name()));
+        return EXIT_ERROR;
+    }
+
+    let file_name = path
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_default();
+    let destination = commons.root().join(family.name()).join(&file_name);
+    let entry = format!("{}/{file_name}", family.name());
+
+    // The collision matrix, decided before the lock. The identical case is a
+    // clean no-op: the original stays too — nothing was ever going to point
+    // back at it, so there is nothing to delete.
+    if let Ok(meta) = fs::symlink_metadata(&destination) {
+        if meta.file_type().is_symlink() {
+            return existing_link_answer(&entry, &destination, path, r);
+        }
+        if !link::same_contents(path, &destination) {
+            r.problem(divergence_message(path, &destination));
+            return EXIT_ERROR;
+        }
+        r.line(format!("{entry} is already in the Commons — nothing to do"));
+        return EXIT_CLEAN;
+    }
+
+    let adoption = Adoption {
+        env,
+        config,
+        commons,
+        surface: Surface::FanOut(family),
+        origin: path,
+        destination: &destination,
+    };
+
+    if dry_run {
+        r.line("dry run — no changes will be made");
+        r.blank();
+        r.line(format!(
+            "copy: {file_name} — copied into the Commons ({})",
+            family.name()
+        ));
+        r.line(format!("  would copy {} into the Commons", path.display()));
+        r.line(divorce_line(path));
+        fan_out(&adoption, r, true);
+        return EXIT_CLEAN;
+    }
+
+    let _lock = match lock::acquire(env.state_dir(), lock::timeout(env)) {
+        Ok(guard) => guard,
+        Err(e) => {
+            r.problem(e.to_string());
+            return EXIT_ERROR;
+        }
+    };
+
+    if let Some(parent) = destination.parent()
+        && let Err(e) = fs::create_dir_all(parent)
+    {
+        r.problem(format!("cannot create {}: {e}", parent.display()));
+        return EXIT_ERROR;
+    }
+
+    if let Err(e) = copy_tree(path, &destination) {
+        // Leave no half-copied entry behind for sync to fan out.
+        let _ = if destination.is_dir() {
+            fs::remove_dir_all(&destination)
+        } else {
+            fs::remove_file(&destination)
+        };
+        r.problem(format!(
+            "cannot copy {} into the Commons: {e}",
+            path.display()
+        ));
+        return EXIT_ERROR;
+    }
+
+    r.line(format!(
+        "adopted {file_name} — copied into the Commons ({})",
+        family.name()
+    ));
+    r.line(divorce_line(path));
+
+    fan_out(&adoption, r, false);
+    r.verdict()
+}
+
+/// The one loud sentence Copy pays for future divergence with — present tense
+/// in real and dry runs alike, because it states a fact, not an action.
+fn divorce_line(path: &Path) -> String {
+    format!(
+        "  the original at {} is no longer consulted; edits there will \
+         diverge from the Commons copy",
+        path.display()
+    )
+}
+
 /// Whether a `.git` — directory or file, covering worktrees and submodules —
 /// sits at the path or anywhere above it: the content has a durable home.
 fn in_git_repo(path: &Path) -> bool {
@@ -406,6 +510,52 @@ fn same_place(a: &Path, b: &Path) -> bool {
         (Ok(x), Ok(y)) => x == y,
         _ => false,
     }
+}
+
+/// One answer for a Commons symlink already holding an entry's name, shared
+/// by every mechanic so the matrix reads the same everywhere: a link resolving
+/// to this very path is the idempotent no-op, a link elsewhere refuses and
+/// names the fix.
+fn existing_link_answer(entry: &str, destination: &Path, path: &Path, r: &mut Reporter) -> i32 {
+    let text = fs::read_link(destination).unwrap_or_default();
+    let resolved = link::resolve_link(destination, &text);
+    if same_place(&resolved, path) {
+        r.line(format!(
+            "{entry} is already Sourced from {} — nothing to do",
+            path.display()
+        ));
+        return EXIT_CLEAN;
+    }
+    r.problem(format!(
+        "{entry} is already Sourced from {} — remove the Commons link \
+         first if you mean to repoint it",
+        resolved.display()
+    ));
+    EXIT_ERROR
+}
+
+/// The family an external path belongs to — its parent directory's basename —
+/// or the refusal naming the accepted ones. Shared by Source and Copy: the
+/// non-family answer reads the same whichever mechanic asked.
+fn family_from_parent(path: &Path, r: &mut Reporter) -> Option<Family> {
+    let parent_name = path
+        .parent()
+        .and_then(|p| p.file_name())
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_default();
+    let family = Family::ALL
+        .iter()
+        .copied()
+        .find(|f| f.name() == parent_name);
+    if family.is_none() {
+        r.problem(format!(
+            "{}: parent directory \"{parent_name}\" is not a family — \
+             adopt takes paths from {}",
+            path.display(),
+            family_list()
+        ));
+    }
+    family
 }
 
 /// One divergence refusal for every mechanic: agentstow never chooses which
