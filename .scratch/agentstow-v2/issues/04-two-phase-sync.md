@@ -4,7 +4,7 @@
 
 **Blocked by:** 01 — Rename the Store to the Commons everywhere.
 
-**Status:** ready-for-agent
+**Status:** done
 
 - [ ] A sync with any survey problem exits 1, lists every problem (not just the first), and writes nothing
 - [ ] `--dry-run` output is the same plan the real run executes, from the same code path

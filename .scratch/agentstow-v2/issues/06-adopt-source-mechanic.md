@@ -4,7 +4,7 @@
 
 **Blocked by:** 05 — adopt dispatch, guard, absorb fan-out.
 
-**Status:** ready-for-agent
+**Status:** done
 
 - [ ] A repo path (including via a `.git` file) adopts as an absolute as-given Commons link and fans out; re-running is a clean no-op
 - [ ] Identical real copy → replaced by the link; divergent → refuses; link elsewhere → refuses with the repoint instruction

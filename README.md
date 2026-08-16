@@ -54,8 +54,10 @@ actionable, 1 error) — `sync --dry-run` previews, it does not gate.
 
 Claude Code, Codex, opencode, pi, oh-my-pi, OpenClaw, Hermes, Gemini CLI, Cursor, Windsurf,
 Roo and Cline. Detection is simply whether the agent's config directory exists — agentstow
-never creates one. Agents that read `~/.agents/` natively (opencode, oh-my-pi) get nothing
-written, because nothing needs to be.
+never creates one. Agents that read `~/.agents/skills` natively (Codex, opencode, oh-my-pi,
+Gemini CLI, Cursor) get no skill links written, because nothing needs to be — and where an
+agent still reads its old fan-out directory beside the Commons (Codex, Cursor), `sync`
+prunes agentstow's now-duplicate links from it.
 
 ## Interop
 
@@ -69,7 +71,8 @@ opencode and friends read natively — one `AGENTS.md`, and an `mcp.json` in the
 Anything it does not own. A symlink pointing outside the Commons, a hand-written file, an
 MCP server whose name isn't in the Commons — all Foreign, all reported by `status`, none
 ever modified. A real directory shadowing a Commons entry is a **Variant**: deliberate,
-preserved, and flagged only when its contents are identical so you can dedupe on purpose.
+preserved, and counted as actionable only when its contents are identical to the Commons
+copy, so you can dedupe on purpose.
 
 The Commons is exactly that — a commons, not agentstow's alone. opencode, oh-my-pi and
 Hermes read `~/.agents/` themselves, and other tools keep their own files there. `doctor`
@@ -88,9 +91,9 @@ another root, `AGENTSTOW_LOCK_TIMEOUT_MS` bounds the lock wait.
 ## What it does not do
 
 No cross-machine sync — version the Commons with git or chezmoi. No undo — refusals come
-before writes, `sync` plans everything before writing anything, every mutating command has
-`--dry-run`, re-runs are idempotent, and a git-versioned Commons is better history than
-any journal. **No memory sync**: agent memory is not a defined artifact and agentstow will
+before writes, `sync` plans everything before writing anything, `sync` and `adopt` preview
+with `--dry-run`, re-runs are idempotent, and a git-versioned Commons is better history
+than any journal. **No memory sync**: agent memory is not a defined artifact and agentstow will
 not pretend otherwise. No GUI, daemon or file watcher. It does not install skills; it fans
 out whatever is in the Commons, whoever put it there.
 

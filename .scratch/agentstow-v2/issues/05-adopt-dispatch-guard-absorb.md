@@ -4,7 +4,7 @@
 
 **Blocked by:** 03 — agents family rename; 04 — two-phase sync (the fan-out rides its per-entry plan machinery).
 
-**Status:** ready-for-agent
+**Status:** done
 
 - [ ] Any path inside the Commons refuses with the "already in the Commons" message; the committed-Commons (`.git` present) self-link scenario is pinned by a test
 - [ ] Absorbing from an agent surface moves the content in, leaves the relative link, and fans the entry out to every installed agent; `sync` immediately after reports nothing to do

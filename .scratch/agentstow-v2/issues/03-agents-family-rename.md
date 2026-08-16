@@ -4,7 +4,7 @@
 
 **Blocked by:** 01 — Rename the Store to the Commons everywhere.
 
-**Status:** ready-for-agent
+**Status:** done
 
 - [ ] The family's Commons dir, report label, and config key are `agents`; sync/status/doctor all say `agents`
 - [ ] `subagents` still works as a custom-target config key (alias), with a test

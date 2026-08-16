@@ -4,7 +4,7 @@
 
 **Blocked by:** None — can start immediately.
 
-**Status:** ready-for-agent
+**Status:** done
 
 - [ ] All user-facing output of every command says "Commons", never "Store"/"store", for the central directory
 - [ ] CLI `--help`/about text uses the Commons gloss at first mention

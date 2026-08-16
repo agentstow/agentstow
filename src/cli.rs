@@ -26,11 +26,19 @@ pub enum Command {
         #[arg(long)]
         dry_run: bool,
     },
-    /// Create the Commons skeleton.
+    /// Create the Commons skeleton and report what this machine already has.
     Init,
     /// Take a path under management; where it lives picks the mechanic.
+    ///
+    /// Three mechanics, one verb. A real config in a Target surface is
+    /// absorbed into the Commons, leaving a link behind. A path inside a git
+    /// repo becomes a Sourced entry — the Commons links out to it, and the
+    /// repo keeps the truth. Any other path is copied in, and the original is
+    /// no longer consulted. A path already inside the Commons refuses: it is
+    /// already home.
     Adopt {
-        /// A Target-surface path to absorb, or a repo path to Source.
+        /// A Target-surface path to absorb, a repo path to Source, or any
+        /// other path to copy in.
         path: String,
         /// Name the mechanic and report every action without touching anything.
         #[arg(long)]
@@ -52,7 +60,7 @@ pub enum Command {
         #[command(subcommand)]
         command: McpCommand,
     },
-    /// Check machine readiness: installed agents, Commons usability, hygiene.
+    /// Check machine readiness: installed agents, Commons hygiene, Sourced entries.
     Doctor,
 }
 

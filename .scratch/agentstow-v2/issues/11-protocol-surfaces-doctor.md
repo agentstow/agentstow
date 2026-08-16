@@ -4,7 +4,7 @@
 
 **Blocked by:** 03 — agents family rename (same doctor root-entry classification is touched there).
 
-**Status:** ready-for-agent
+**Status:** done
 
 - [ ] `doctor` lists present protocol surfaces under their own attributed grouping, distinct from other co-tenants
 - [ ] Absent surfaces are not mentioned; nothing is ever created, counted as an issue, or touched

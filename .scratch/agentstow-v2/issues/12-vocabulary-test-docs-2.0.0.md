@@ -4,7 +4,7 @@
 
 **Blocked by:** 02, 03, 04, 05, 06, 07, 08, 09, 10, 11 — every ticket that writes or changes user-facing strings.
 
-**Status:** ready-for-agent
+**Status:** done
 
 - [ ] The vocabulary test exists, covers all user-facing strings, enforces the avoid-lists plus "store", and is green
 - [ ] README and `--help` text verified sentence-by-sentence against shipped behavior; discrepancies fixed

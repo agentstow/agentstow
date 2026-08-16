@@ -27,6 +27,12 @@ impl Family {
     /// Every fan-out family, in report order.
     pub const ALL: &'static [Family] = &[Family::Skills, Family::Commands, Family::Agents];
 
+    /// The agents family's pre-v2 name. Recognized in exactly two places — the
+    /// config-key alias below and doctor's leftover-directory hint — so
+    /// existing machines keep working. The retired word is written here once,
+    /// and the vocabulary test pins this as its only permitted occurrence.
+    pub const PRE_V2_AGENTS_NAME: &'static str = "subagents";
+
     /// The Commons directory, and the name used in config and reports.
     pub fn name(&self) -> &'static str {
         match self {
@@ -44,10 +50,10 @@ impl Family {
     }
 
     /// Parse a family name from configuration. Unknown names are rejected
-    /// rather than guessed at. `subagents`, the family's pre-v2 name, is
-    /// still accepted so existing configs keep working.
+    /// rather than guessed at. The family's pre-v2 name is still accepted so
+    /// existing configs keep working.
     pub fn from_name(name: &str) -> Option<Family> {
-        if name == "subagents" {
+        if name == Family::PRE_V2_AGENTS_NAME {
             return Some(Family::Agents);
         }
         Family::ALL.iter().copied().find(|f| f.name() == name)

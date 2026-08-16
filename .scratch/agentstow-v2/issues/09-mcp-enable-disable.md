@@ -4,7 +4,7 @@
 
 **Blocked by:** 01 — Rename the Store to the Commons everywhere.
 
-**Status:** ready-for-agent
+**Status:** done
 
 - [ ] `mcp disable <name>` removes the managed entry from every targeted agent config immediately and keeps the definition and rules in the Commons file
 - [ ] `mcp enable <name>` restores the entry everywhere immediately

@@ -4,7 +4,7 @@
 
 **Blocked by:** 01 — Rename the Store to the Commons everywhere.
 
-**Status:** ready-for-agent
+**Status:** done
 
 - [ ] `agentstow.toml` is read only from the XDG config path; explicit `XDG_CONFIG_HOME` and the derived default both work
 - [ ] The lock is created only under the XDG state path; nothing is ever created under `~/.agentstow/`

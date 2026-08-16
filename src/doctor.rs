@@ -43,9 +43,9 @@ pub fn run(env: &Env, config: &Config, r: &mut Reporter) -> i32 {
         r.problem(commons::missing_message(commons.root()));
     }
 
-    // The agents family was `subagents/` before v2; a non-empty leftover is
-    // silently invisible to sync, so name it.
-    let pre_v2_agents = commons.root().join("subagents");
+    // The agents family had another name before v2; a non-empty leftover
+    // directory is silently invisible to sync, so name it.
+    let pre_v2_agents = commons.root().join(Family::PRE_V2_AGENTS_NAME);
     if std::fs::read_dir(&pre_v2_agents).is_ok_and(|mut d| d.next().is_some()) {
         r.warn(format!(
             "{} is no longer a family — the agents family reads agents/; rename the directory",

@@ -4,7 +4,7 @@
 
 **Blocked by:** 06 — the Source mechanic (shared dispatch and matrix land there first).
 
-**Status:** ready-for-agent
+**Status:** done
 
 - [ ] A non-repo external path with a family-named parent copies in, fans out, and `sync` after is a no-op
 - [ ] The message states the original's path, that it is no longer consulted, and that it will diverge

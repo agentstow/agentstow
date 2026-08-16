@@ -4,7 +4,7 @@
 
 **Blocked by:** 01 — Rename the Store to the Commons everywhere.
 
-**Status:** ready-for-agent
+**Status:** done
 
 - [ ] Every candidate agent verified against primary docs; evidence quoted in the registry comment, dated
 - [ ] Unconditional user-level readers flipped to Native; conditional ones stay FanOut with the reason

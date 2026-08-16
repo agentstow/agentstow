@@ -955,3 +955,39 @@ Out of scope but recorded: Amp, Copilot CLI and Kimi also read
 `~/.agents/skills` per the 2026-08 research, but have no registry rows —
 adding agents is a separate change (a data-only row each), and they are the
 natural next candidates.
+
+## 2026-08-16 — The vocabulary test enforces what is unambiguous, and no more
+
+Ticket 12's brief — "a test scans every user-facing output string against
+CONTEXT.md's avoid-lists and fails on any violation" — is not literally
+implementable: "source", "external", "override" and "conflict" are homonyms
+whose other senses the tool must say (Source and Conflict are themselves
+defined terms), and bare "linked" is the fan-out vocabulary. The test
+(`tests/vocabulary.rs`) therefore enforces the word-bounded retired terms
+`store` and `subagents` plus the six avoid-phrases with no legitimate other
+sense, reads CONTEXT.md at runtime so a glossary change fails the test rather
+than being silently ignored, and says in its header exactly what it cannot
+check. Three calls within that: the ticket's two anticipated `subagents`
+literals (config alias, doctor hint) were three in the code, so all uses were
+consolidated into one constant — `Family::PRE_V2_AGENTS_NAME` — and the test
+pins its count at exactly one, catching a stale allowlist in either direction;
+the checked-in npm launcher `package.json` was bumped to 2.0.0 with its
+optionalDependencies pins, although the runbook says only `Cargo.toml` carries
+a version (build-npm.sh stamps over it either way), because a checked-in 0.0.1
+that never ships is a standing invitation to misread; and the crate/npm
+descriptions' "subagents" — outside the test's reach but on every registry
+page — was fixed to "agents" in the same sweep.
+
+## 2026-08-16 — README claims corrected to shipped behavior, not the reverse
+
+The docs-vs-behavior pass (ticket 12) treated the code as truth. Three README
+sentences were wrong: "every mutating command has `--dry-run`" (only sync and
+adopt preview; revert and the mcp verbs are refusal-guarded instead) is now
+"`sync` and `adopt` preview with `--dry-run`"; the native-readers sentence
+named only opencode and oh-my-pi from before the registry flips, and now names
+Codex, opencode, oh-my-pi, Gemini CLI and Cursor for skills plus the legacy
+prune; and a Variant "flagged only when identical" is now "counted as
+actionable only when identical", since status does list a diverged Variant —
+it just never counts it. CLI help gained the three-mechanic long help on
+adopt, and doctor's summary line now matches the README's ("installed agents,
+Commons hygiene, Sourced entries").

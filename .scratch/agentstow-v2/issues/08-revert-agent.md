@@ -4,7 +4,7 @@
 
 **Blocked by:** 01 — Rename the Store to the Commons everywhere.
 
-**Status:** ready-for-agent
+**Status:** done
 
 - [ ] Revert on an enabled agent refuses and prints the exact disable line for that agent
 - [ ] Revert on a disabled agent removes our links, our merged MCP/hook entries, and Marker files from that agent only
