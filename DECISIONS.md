@@ -819,3 +819,26 @@ get their links (exit 1), mirroring sync's write-failure semantics rather than
 aborting a half-fanned adopt; and Variants or Foreign links met during the
 fan-out are named in the report using `link::State`'s own label/note words, so
 adopt and sync describe the same state in the same vocabulary.
+
+## 2026-08-16 — Source mechanic: what counts as Sourced, and how "same place" is judged
+
+Three calls ticket 06 left open. First, doctor's `(N sourced)` suffix counts
+every symlink entry in a family directory — dangling ones included — so it can
+exceed the scan's entry count (`skills 0 (1 sourced)` for a lone dangling
+link). The suffix and the `Sourced entries:` section describe the same set,
+because the section exists to answer "what must I clone?" and a not-yet-cloned
+source is exactly the interesting row. Second, any family-entry symlink counts
+as Sourced in doctor regardless of where it resolves, per CONTEXT.md: Sourced
+entries are the only ones recognizable on disk, and they are recognizable *by
+being symlinks* — doctor does not second-guess where a hand-made link points.
+Third, the idempotence comparison (`same_place`) answers lexically first —
+normalized link resolution equals the normalized input, so dangling paths
+still compare — and falls back to `fs::canonicalize` on both sides, so an
+absolute link reaching the same file by another spelling still reads as "already
+Sourced". A canonicalize-only rule would break for sources that do not resolve;
+a lexical-only rule would refuse a repoint that is not one. Smaller notes: the
+git walk-up tests the path itself and every ancestor (a repo root is itself
+adoptable) via `symlink_metadata`, so `.git` as file or directory both count;
+and the dry-run family fan-out surveys against the not-yet-created Commons
+destination, accepting the same preview drift ticket 05 logged for
+instructions.

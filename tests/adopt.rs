@@ -222,6 +222,283 @@ fn claudes_own_file_is_never_adopted_wholesale() {
         .assert_stderr_has("not somewhere agentstow manages");
 }
 
+// ---- the Source mechanic ----
+
+#[test]
+fn a_repo_path_becomes_an_absolute_commons_link_and_fans_out() {
+    let f = machine();
+    f.file("github/skillrepo/.git/HEAD", "ref: refs/heads/main\n");
+    f.file(
+        "github/skillrepo/skills/research/SKILL.md",
+        "kept in the repo\n",
+    );
+    let path = f.path("github/skillrepo/skills/research");
+
+    let out = f.run(&["adopt", &path.display().to_string()]);
+
+    out.assert_clean()
+        .assert_stdout_has(&format!(
+            "adopted research — Sourced from {} (skills)",
+            path.display()
+        ))
+        .assert_stdout_has("linked into claude (.claude/skills)")
+        .assert_stdout_has("linked into codex (.codex/skills)");
+    assert_eq!(
+        f.link_text(".agents/skills/research"),
+        path.display().to_string(),
+        "the Commons link is absolute, the path exactly as given"
+    );
+    assert_eq!(
+        f.link_text(".claude/skills/research"),
+        "../../.agents/skills/research",
+        "agents link to the Commons entry, which holds the pointer"
+    );
+    assert_eq!(
+        f.contents(".claude/skills/research/SKILL.md"),
+        "kept in the repo\n",
+        "the content reaches agents through the chain of links"
+    );
+}
+
+#[test]
+fn sync_right_after_a_source_adopt_has_nothing_to_do() {
+    let f = machine();
+    f.file("repo/.git/HEAD", "ref: refs/heads/main\n");
+    f.file("repo/skills/research/SKILL.md", "mine\n");
+    f.run(&[
+        "adopt",
+        &f.path("repo/skills/research").display().to_string(),
+    ])
+    .assert_clean();
+
+    f.run(&["sync"])
+        .assert_clean()
+        .assert_stdout_has("Everything is up to date.");
+}
+
+#[test]
+fn a_git_file_marks_a_durable_home_too() {
+    let f = machine();
+    // A worktree or submodule carries `.git` as a *file* pointing home.
+    f.file(
+        "worktrees/wt/.git",
+        "gitdir: /somewhere/main/.git/worktrees/wt\n",
+    );
+    f.file("worktrees/wt/commands/ship.md", "ship from the worktree\n");
+    let path = f.path("worktrees/wt/commands/ship.md");
+
+    f.run(&["adopt", &path.display().to_string()])
+        .assert_clean()
+        .assert_stdout_has("Sourced from")
+        .assert_stdout_has("(commands)");
+    assert_eq!(
+        f.link_text(".agents/commands/ship.md"),
+        path.display().to_string()
+    );
+}
+
+#[test]
+fn re_running_a_source_adopt_is_a_clean_no_op() {
+    let f = machine();
+    f.file("repo/.git/HEAD", "ref: refs/heads/main\n");
+    f.file("repo/skills/research/SKILL.md", "mine\n");
+    let path = f.path("repo/skills/research").display().to_string();
+    f.run(&["adopt", &path]).assert_clean();
+    let before = f.tree();
+
+    let out = f.run(&["adopt", &path]);
+
+    out.assert_clean().assert_stdout_has(&format!(
+        "skills/research is already Sourced from {path} — nothing to do"
+    ));
+    assert_eq!(before, f.tree(), "a no-op must change nothing");
+}
+
+#[test]
+fn a_symlink_input_is_linked_as_given_never_resolved_through() {
+    let f = machine();
+    f.file("repo/.git/HEAD", "ref: refs/heads/main\n");
+    f.file("repo/lib/research/SKILL.md", "the real copy\n");
+    f.symlink("repo/skills/research", "../lib/research");
+    let path = f.path("repo/skills/research");
+
+    f.run(&["adopt", &path.display().to_string()])
+        .assert_clean();
+
+    assert_eq!(
+        f.link_text(".agents/skills/research"),
+        path.display().to_string(),
+        "the Commons links to the symlink, not through it"
+    );
+    assert_eq!(
+        f.contents(".agents/skills/research/SKILL.md"),
+        "the real copy\n",
+        "the content still reads through the chain"
+    );
+}
+
+#[test]
+fn an_identical_commons_copy_is_replaced_by_the_link() {
+    let f = machine();
+    f.commons_skill("research");
+    let body = f.contents_of_commons("skills/research/SKILL.md");
+    f.file("repo/.git/HEAD", "ref: refs/heads/main\n");
+    f.file("repo/skills/research/SKILL.md", &body);
+    let path = f.path("repo/skills/research");
+
+    let out = f.run(&["adopt", &path.display().to_string()]);
+
+    out.assert_clean()
+        .assert_stdout_has("replaced the identical Commons copy with the link");
+    assert!(
+        f.is_symlink(".agents/skills/research"),
+        "the Source holds the single real copy now"
+    );
+    assert_eq!(
+        f.contents(".agents/skills/research/SKILL.md"),
+        body,
+        "the content still reads through the link"
+    );
+}
+
+#[test]
+fn a_diverged_commons_copy_refuses_the_source() {
+    let f = machine();
+    f.commons_skill("research");
+    f.file("repo/.git/HEAD", "ref: refs/heads/main\n");
+    f.file("repo/skills/research/SKILL.md", "a different body\n");
+    let before = f.tree();
+
+    f.run(&[
+        "adopt",
+        &f.path("repo/skills/research").display().to_string(),
+    ])
+    .assert_code(1)
+    .assert_stderr_has("Variant")
+    .assert_stderr_has("Merge it by hand");
+    assert_eq!(before, f.tree(), "a refusal must change nothing");
+}
+
+#[test]
+fn a_commons_link_pointing_elsewhere_refuses_to_repoint() {
+    let f = machine();
+    f.file(
+        "elsewhere/skills/research/SKILL.md",
+        "the other repo's copy\n",
+    );
+    let other = f.path("elsewhere/skills/research");
+    f.commons_symlink("skills/research", &other.display().to_string());
+    f.file("repo/.git/HEAD", "ref: refs/heads/main\n");
+    f.file("repo/skills/research/SKILL.md", "mine\n");
+
+    f.run(&[
+        "adopt",
+        &f.path("repo/skills/research").display().to_string(),
+    ])
+    .assert_code(1)
+    .assert_stderr_has(&format!(
+        "skills/research is already Sourced from {} — \
+         remove the Commons link first if you mean to repoint it",
+        other.display()
+    ));
+    assert_eq!(
+        f.link_text(".agents/skills/research"),
+        other.display().to_string(),
+        "the existing link is untouched"
+    );
+}
+
+#[test]
+fn a_repo_path_under_a_non_family_parent_is_refused() {
+    let f = machine();
+    f.file("repo/.git/HEAD", "ref: refs/heads/main\n");
+    f.file("repo/prompts/thing.md", "no family claims this\n");
+
+    f.run(&[
+        "adopt",
+        &f.path("repo/prompts/thing.md").display().to_string(),
+    ])
+    .assert_code(1)
+    .assert_stderr_has("parent directory \"prompts\" is not a family")
+    .assert_stderr_has("skills/, commands/, or agents/");
+}
+
+#[test]
+fn a_family_parent_without_a_repo_still_refuses() {
+    let f = machine();
+    // The parent basename alone never triggers the Source mechanic — only a
+    // durable home does. Without `.git` above, the existing refusal stands.
+    f.file("loose/skills/thing/SKILL.md", "no durable home\n");
+
+    f.run(&["adopt", &f.path("loose/skills/thing").display().to_string()])
+        .assert_code(1)
+        .assert_stderr_has("not somewhere agentstow manages");
+}
+
+#[test]
+fn a_declared_custom_surface_absorbs_even_inside_a_repo() {
+    let f = machine();
+    // Declaring a custom target is an explicit statement that the dir has
+    // fan-out semantics — the surface wins over the repo walk-up (ADR-0006).
+    f.file(
+        ".config/agentstow/agentstow.toml",
+        "[custom.myagent]\nroot = \"repo/.myagent\"\nskills = \"repo/.myagent/skills\"\n",
+    );
+    f.file("repo/.git/HEAD", "ref: refs/heads/main\n");
+    f.file("repo/.myagent/skills/local/SKILL.md", "mine\n");
+
+    let out = f.run(&[
+        "adopt",
+        &f.path("repo/.myagent/skills/local").display().to_string(),
+    ]);
+
+    out.assert_clean()
+        .assert_stdout_has("adopted local from myagent into the Commons (skills)")
+        .assert_stdout_lacks("Sourced");
+    assert!(
+        !f.is_symlink(".agents/skills/local"),
+        "absorb moves the content in — the Commons entry is real"
+    );
+    assert!(
+        f.is_symlink("repo/.myagent/skills/local"),
+        "the surface keeps a link behind, exactly as any absorb"
+    );
+}
+
+#[test]
+fn dry_run_of_a_source_changes_nothing_and_previews_the_real_run() {
+    let f = machine();
+    f.file("repo/.git/HEAD", "ref: refs/heads/main\n");
+    f.file("repo/skills/research/SKILL.md", "mine\n");
+    let path = f.path("repo/skills/research").display().to_string();
+    let commons_entry = f.commons().join("skills/research");
+    let before = f.tree();
+
+    let dry = f.run(&["adopt", &path, "--dry-run"]);
+
+    dry.assert_clean()
+        .assert_stdout_has("dry run — no changes will be made")
+        .assert_stdout_has(&format!("source: research — Sourced from {path} (skills)"))
+        .assert_stdout_has(&format!("would link {} → {path}", commons_entry.display()))
+        .assert_stdout_has("would link into claude (.claude/skills)")
+        .assert_stdout_has("would link into codex (.codex/skills)");
+    assert_eq!(before, f.tree(), "--dry-run must not touch the filesystem");
+
+    // Every fan-out the dry run promised, the real run delivers verbatim.
+    let real = f.run(&["adopt", &path]);
+    real.assert_clean()
+        .assert_stdout_has(&format!("adopted research — Sourced from {path} (skills)"));
+    for line in dry.stdout.lines() {
+        if let Some(rest) = line.strip_prefix("  would link into ") {
+            assert!(
+                real.stdout.contains(&format!("  linked into {rest}")),
+                "the dry run promised a link into {rest:?}\nreal run:\n{}",
+                real.stdout
+            );
+        }
+    }
+}
+
 // ---- the Commons guard ----
 
 #[test]

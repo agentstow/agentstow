@@ -28,9 +28,9 @@ pub enum Command {
     },
     /// Create the Commons skeleton.
     Init,
-    /// Absorb an existing config into the Commons, leaving a link behind.
+    /// Take a path under management; where it lives picks the mechanic.
     Adopt {
-        /// The real file or directory to take into the Commons.
+        /// A Target-surface path to absorb, or a repo path to Source.
         path: String,
         /// Name the mechanic and report every action without touching anything.
         #[arg(long)]

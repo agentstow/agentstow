@@ -203,6 +203,51 @@ fn init_is_safe_to_run_twice() {
     assert!(f.commons().join("skills/research/SKILL.md").exists());
 }
 
+// --- The Sourced view (ADR-0006) --------------------------------------------
+
+#[test]
+fn lists_sourced_entries_with_their_sources_and_count() {
+    let f = Fixture::new();
+    f.file("repo/skills/research/SKILL.md", "kept in the repo\n");
+    let source = f.path("repo/skills/research");
+    f.commons_symlink("skills/research", &source.display().to_string());
+    f.commons_skill("plain");
+
+    let out = f.run(&["doctor"]);
+
+    out.assert_clean()
+        .assert_stdout_has("skills        2 (1 sourced)")
+        .assert_stdout_has("Sourced entries:")
+        .assert_stdout_has(&format!("  skills/research ← {}", source.display()))
+        .assert_stdout_lacks("source missing");
+}
+
+#[test]
+fn a_missing_source_is_still_listed_and_marked() {
+    // The scan skips a dangling link, but the Sourced view answers the
+    // machine-bootstrap question "what must I clone?" — so it must name
+    // exactly the entries whose repo is not here yet.
+    let f = Fixture::new();
+    f.commons_symlink("skills/research", "/nowhere/skills/research");
+
+    let out = f.run(&["doctor"]);
+
+    out.assert_clean()
+        .assert_stdout_has("skills        0 (1 sourced)")
+        .assert_stdout_has("  skills/research ← /nowhere/skills/research (source missing)");
+}
+
+#[test]
+fn the_sourced_suffix_and_section_vanish_when_there_are_none() {
+    let f = Fixture::new();
+    f.commons_skill("research");
+
+    f.run(&["doctor"])
+        .assert_clean()
+        .assert_stdout_lacks("sourced")
+        .assert_stdout_lacks("Sourced entries");
+}
+
 // --- The Commons as a shared commons (ADR-0004) -----------------------------
 
 #[test]

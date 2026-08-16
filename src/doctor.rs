@@ -8,7 +8,7 @@
 use std::ffi::CString;
 #[cfg(unix)]
 use std::os::unix::ffi::OsStrExt;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use crate::commons::{self, Commons};
 use crate::config::Config;
@@ -86,9 +86,20 @@ fn report_commons(commons: &Commons, r: &mut Reporter) {
         "absent"
     };
 
+    let sourced = sourced_entries(commons);
+
     r.line("Commons contents:");
     for (family, scan) in &scans {
-        r.line(format!("  {:<13} {}", family.name(), scan.entries.len()));
+        let n = sourced.iter().filter(|s| s.family == *family).count();
+        if n > 0 {
+            r.line(format!(
+                "  {:<13} {} ({n} sourced)",
+                family.name(),
+                scan.entries.len()
+            ));
+        } else {
+            r.line(format!("  {:<13} {}", family.name(), scan.entries.len()));
+        }
     }
     if hooks.is_dir() {
         let count = hook_files.iter().filter(|n| n.ends_with(".toml")).count();
@@ -99,6 +110,22 @@ fn report_commons(commons: &Commons, r: &mut Reporter) {
     r.line(format!("  AGENTS.md     {instructions}"));
     r.line(format!("  mcp.json      {mcp}"));
     r.blank();
+
+    // The machine-bootstrap question "what must I clone?" (ADR-0006): every
+    // Sourced entry with its source, missing sources marked.
+    if !sourced.is_empty() {
+        r.line("Sourced entries:");
+        for s in &sourced {
+            let marker = if s.missing { " (source missing)" } else { "" };
+            r.line(format!(
+                "  {}/{} ← {}{marker}",
+                s.family.name(),
+                s.name,
+                s.source.display()
+            ));
+        }
+        r.blank();
+    }
 
     let others = co_tenants(commons);
     if !others.is_empty() {
@@ -122,6 +149,54 @@ fn report_commons(commons: &Commons, r: &mut Reporter) {
             "Commons hooks/{name}: not a `<Event>.toml` file, skipped"
         ));
     }
+}
+
+/// One Sourced entry: a Commons symlink out to its Source.
+struct Sourced {
+    family: Family,
+    name: String,
+    /// Where the link points, resolved lexically — live or not.
+    source: PathBuf,
+    /// The source does not resolve: the repo is not cloned here (yet).
+    missing: bool,
+}
+
+/// Every Sourced entry, gathered by reading the family directories directly:
+/// the scan skips a dangling link (`Issue::DanglingLink`), and a Sourced entry
+/// whose repo is not cloned yet is exactly what this view exists to name.
+fn sourced_entries(commons: &Commons) -> Vec<Sourced> {
+    let mut acc = Vec::new();
+    for family in Family::ALL {
+        let dir = commons.family_dir(family.name());
+        let Ok(read) = std::fs::read_dir(&dir) else {
+            continue;
+        };
+        for entry in read.flatten() {
+            let name = entry.file_name().to_string_lossy().into_owned();
+            // Dot-prefixed names are never synced; the scan already warns.
+            if name.starts_with('.') {
+                continue;
+            }
+            let path = entry.path();
+            let is_link = std::fs::symlink_metadata(&path)
+                .map(|m| m.file_type().is_symlink())
+                .unwrap_or(false);
+            if !is_link {
+                continue;
+            }
+            let Ok(text) = std::fs::read_link(&path) else {
+                continue;
+            };
+            acc.push(Sourced {
+                family: *family,
+                name,
+                source: link::resolve_link(&path, &text),
+                missing: std::fs::metadata(&path).is_err(),
+            });
+        }
+    }
+    acc.sort_by(|a, b| a.family.cmp(&b.family).then_with(|| a.name.cmp(&b.name)));
+    acc
 }
 
 /// Names at the Commons root that are not agentstow's own families.
