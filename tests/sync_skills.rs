@@ -18,10 +18,10 @@ fn machine() -> Fixture {
 }
 
 #[test]
-fn links_every_store_skill_into_every_fan_out_target() {
+fn links_every_commons_skill_into_every_fan_out_target() {
     let f = machine();
-    f.store_skill("research");
-    f.store_skill("tdd");
+    f.commons_skill("research");
+    f.commons_skill("tdd");
 
     f.run(&["sync"]).assert_clean();
 
@@ -38,8 +38,8 @@ fn links_every_store_skill_into_every_fan_out_target() {
             assert!(f.is_symlink(&rel), "{rel} should be a symlink");
             assert_eq!(
                 f.resolves_to(&rel),
-                std::fs::canonicalize(f.store().join("skills").join(skill)).unwrap(),
-                "{rel} should resolve into the Store"
+                std::fs::canonicalize(f.commons().join("skills").join(skill)).unwrap(),
+                "{rel} should resolve into the Commons"
             );
         }
     }
@@ -48,11 +48,11 @@ fn links_every_store_skill_into_every_fan_out_target() {
 #[test]
 fn native_agents_receive_no_links() {
     let f = machine();
-    f.store_skill("research");
+    f.commons_skill("research");
 
     f.run(&["sync"]).assert_clean();
 
-    // OpenCode scans the Store itself; a fan-out would only duplicate names.
+    // OpenCode scans the Commons itself; a fan-out would only duplicate names.
     assert!(
         !f.exists(".config/opencode/skills"),
         "native agents must not get a skills directory"
@@ -64,7 +64,7 @@ fn agents_without_a_skill_surface_receive_nothing() {
     let f = Fixture::new();
     f.agent(".gemini");
     f.agent(".roo");
-    f.store_skill("research");
+    f.commons_skill("research");
 
     f.run(&["sync"]).assert_clean();
 
@@ -75,7 +75,7 @@ fn agents_without_a_skill_surface_receive_nothing() {
 #[test]
 fn links_are_relative_so_the_home_directory_can_move() {
     let f = machine();
-    f.store_skill("research");
+    f.commons_skill("research");
 
     f.run(&["sync"]).assert_clean();
 
@@ -93,8 +93,8 @@ fn links_are_relative_so_the_home_directory_can_move() {
 #[test]
 fn rewrites_our_own_link_when_it_is_not_in_canonical_form() {
     let f = machine();
-    f.store_skill("research");
-    let absolute = f.store().join("skills").join("research");
+    f.commons_skill("research");
+    let absolute = f.commons().join("skills").join("research");
     f.symlink(".claude/skills/research", &absolute.display().to_string());
 
     f.run(&["sync"]).assert_clean();
@@ -102,14 +102,14 @@ fn rewrites_our_own_link_when_it_is_not_in_canonical_form() {
     assert_eq!(
         f.link_text(".claude/skills/research"),
         "../../.agents/skills/research",
-        "a link resolving into the Store is ours to canonicalise"
+        "a link resolving into the Commons is ours to canonicalise"
     );
 }
 
 #[test]
-fn leaves_a_link_that_resolves_outside_the_store() {
+fn leaves_a_link_that_resolves_outside_the_commons() {
     let f = machine();
-    f.store_skill("research");
+    f.commons_skill("research");
     let elsewhere = f.root().join("someone-elses-skills").join("research");
     std::fs::create_dir_all(&elsewhere).unwrap();
     f.symlink(".claude/skills/other", &elsewhere.display().to_string());
@@ -124,17 +124,17 @@ fn leaves_a_link_that_resolves_outside_the_store() {
 }
 
 #[test]
-fn prunes_a_dangling_link_that_pointed_into_the_store() {
+fn prunes_a_dangling_link_that_pointed_into_the_commons() {
     let f = machine();
-    f.store_skill("research");
-    // What a skill deleted from the Store leaves behind.
+    f.commons_skill("research");
+    // What a skill deleted from the Commons leaves behind.
     f.symlink(".claude/skills/deleted", "../../.agents/skills/deleted");
 
     f.run(&["sync"]).assert_clean();
 
     assert!(
         !f.present(".claude/skills/deleted"),
-        "a dangling Store-pointing link should be pruned"
+        "a dangling Commons-pointing link should be pruned"
     );
     assert!(f.is_symlink(".claude/skills/research"));
 }
@@ -155,7 +155,7 @@ fn leaves_a_dangling_link_that_pointed_somewhere_else() {
 #[test]
 fn preserves_a_variant_directory() {
     let f = machine();
-    f.store_skill("plannotator");
+    f.commons_skill("plannotator");
     f.file(
         ".claude/skills/plannotator/SKILL.md",
         "claude-specific variant\n",
@@ -171,14 +171,14 @@ fn preserves_a_variant_directory() {
         std::fs::read_to_string(f.path(".claude/skills/plannotator/SKILL.md")).unwrap(),
         "claude-specific variant\n"
     );
-    // Other agents still get the Store copy.
+    // Other agents still get the Commons copy.
     assert!(f.is_symlink(".codex/skills/plannotator"));
 }
 
 #[test]
 fn reports_what_it_did() {
     let f = machine();
-    f.store_skill("research");
+    f.commons_skill("research");
 
     f.run(&["sync"])
         .assert_clean()
@@ -188,8 +188,8 @@ fn reports_what_it_did() {
 #[test]
 fn a_second_sync_changes_nothing_and_says_so() {
     let f = machine();
-    f.store_skill("research");
-    f.store_skill("tdd");
+    f.commons_skill("research");
+    f.commons_skill("tdd");
     f.run(&["sync"]).assert_clean();
     let after_first = f.tree();
 
@@ -202,7 +202,7 @@ fn a_second_sync_changes_nothing_and_says_so() {
 #[test]
 fn dry_run_reports_the_plan_and_changes_nothing() {
     let f = machine();
-    f.store_skill("research");
+    f.commons_skill("research");
     let before = f.tree();
 
     let out = f.run(&["sync", "--dry-run"]);
@@ -215,7 +215,7 @@ fn dry_run_reports_the_plan_and_changes_nothing() {
 fn creates_missing_target_directories_but_never_agent_roots() {
     let f = Fixture::new();
     f.agent(".claude"); // root exists, skills/ does not
-    f.store_skill("research");
+    f.commons_skill("research");
 
     f.run(&["sync"]).assert_clean();
 
@@ -232,7 +232,7 @@ fn creates_missing_target_directories_but_never_agent_roots() {
 }
 
 #[test]
-fn missing_store_is_an_error_that_names_the_fix() {
+fn missing_commons_is_an_error_that_names_the_fix() {
     let f = Fixture::bare();
     f.agent(".claude");
 
@@ -244,14 +244,14 @@ fn missing_store_is_an_error_that_names_the_fix() {
 #[test]
 fn a_second_process_holding_the_lock_fails_cleanly() {
     let f = machine();
-    f.store_skill("research");
+    f.commons_skill("research");
     let _held = common::hold_lock(f.path(".agentstow/lock"));
 
     let out = f.run_with_vars(
         &["sync"],
         &[
             ("AGENTSTOW_TARGET_ROOT", f.home().display().to_string()),
-            ("AGENTSTOW_HOME", f.store().display().to_string()),
+            ("AGENTSTOW_HOME", f.commons().display().to_string()),
             ("AGENTSTOW_LOCK_TIMEOUT_MS", "150".to_string()),
         ],
     );

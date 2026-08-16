@@ -1,4 +1,4 @@
-//! The seam itself: how the CLI resolves the Store and home from the
+//! The seam itself: how the CLI resolves the Commons and home from the
 //! environment, and how it separates results from diagnostics.
 
 mod common;
@@ -11,7 +11,7 @@ fn target_root_redirects_home_without_touching_the_real_one() {
     let f = Fixture::new();
     f.agent(".claude");
 
-    // Only AGENTSTOW_TARGET_ROOT is set: the Store defaults to <home>/.agents.
+    // Only AGENTSTOW_TARGET_ROOT is set: the Commons defaults to <home>/.agents.
     let out = f.run_with_vars(
         &["doctor"],
         &[("AGENTSTOW_TARGET_ROOT", f.home().display().to_string())],
@@ -23,10 +23,10 @@ fn target_root_redirects_home_without_touching_the_real_one() {
 }
 
 #[test]
-fn store_location_is_independent_of_home() {
+fn commons_location_is_independent_of_home() {
     let f = Fixture::new();
     f.agent(".claude");
-    let elsewhere = f.root().join("store-elsewhere");
+    let elsewhere = f.root().join("commons-elsewhere");
     fs::create_dir_all(elsewhere.join("skills")).unwrap();
     fs::create_dir_all(elsewhere.join("skills").join("moved")).unwrap();
 
@@ -83,7 +83,7 @@ fn without_any_home_it_refuses_to_guess() {
 }
 
 #[test]
-fn config_directory_is_never_inside_the_store() {
+fn config_directory_is_never_inside_the_commons() {
     let f = Fixture::new();
 
     let out = f.run(&["doctor"]);
@@ -91,8 +91,8 @@ fn config_directory_is_never_inside_the_store() {
     out.assert_clean()
         .assert_stdout_has(&f.home().join(".agentstow").display().to_string());
     assert!(
-        !f.store().join(".agentstow").exists(),
-        "tool config must not live in the Store"
+        !f.commons().join(".agentstow").exists(),
+        "tool config must not live in the Commons"
     );
 }
 

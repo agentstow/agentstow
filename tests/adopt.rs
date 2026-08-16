@@ -13,7 +13,7 @@ fn machine() -> Fixture {
 }
 
 #[test]
-fn a_skill_the_store_does_not_have_moves_in_and_leaves_a_link() {
+fn a_skill_the_commons_does_not_have_moves_in_and_leaves_a_link() {
     let f = machine();
     f.file(".claude/skills/local/SKILL.md", "a hand-written skill\n");
 
@@ -24,9 +24,9 @@ fn a_skill_the_store_does_not_have_moves_in_and_leaves_a_link() {
 
     out.assert_clean().assert_stdout_has("local");
     assert_eq!(
-        std::fs::read_to_string(f.store().join("skills/local/SKILL.md")).unwrap(),
+        std::fs::read_to_string(f.commons().join("skills/local/SKILL.md")).unwrap(),
         "a hand-written skill\n",
-        "the content moves into the Store intact"
+        "the content moves into the Commons intact"
     );
     assert_eq!(
         f.link_text(".claude/skills/local"),
@@ -53,8 +53,8 @@ fn an_adopted_skill_reaches_every_other_agent_on_the_next_sync() {
 #[test]
 fn an_identical_copy_is_collapsed_into_a_link() {
     let f = machine();
-    f.store_skill("research");
-    let body = std::fs::read_to_string(f.store().join("skills/research/SKILL.md")).unwrap();
+    f.commons_skill("research");
+    let body = std::fs::read_to_string(f.commons().join("skills/research/SKILL.md")).unwrap();
     f.file(".claude/skills/research/SKILL.md", &body);
 
     let out = f.run(&[
@@ -65,16 +65,16 @@ fn an_identical_copy_is_collapsed_into_a_link() {
     out.assert_clean().assert_stdout_has("identical");
     assert!(f.is_symlink(".claude/skills/research"));
     assert_eq!(
-        std::fs::read_to_string(f.store().join("skills/research/SKILL.md")).unwrap(),
+        std::fs::read_to_string(f.commons().join("skills/research/SKILL.md")).unwrap(),
         body,
-        "the Store copy is untouched"
+        "the Commons copy is untouched"
     );
 }
 
 #[test]
 fn a_diverged_copy_is_refused_and_nothing_moves() {
     let f = machine();
-    f.store_skill("plannotator");
+    f.commons_skill("plannotator");
     f.file(
         ".claude/skills/plannotator/SKILL.md",
         "the claude variant\n",
@@ -101,14 +101,14 @@ fn a_command_is_adopted_into_the_commands_family() {
     ]);
 
     out.assert_clean().assert_stdout_has("commands");
-    assert!(f.store().join("commands/ship.md").exists());
+    assert!(f.commons().join("commands/ship.md").exists());
     assert!(f.is_symlink(".claude/commands/ship.md"));
 }
 
 #[test]
 fn something_already_linked_has_nothing_to_adopt() {
     let f = machine();
-    f.store_skill("research");
+    f.commons_skill("research");
     f.run(&["sync"]).assert_clean();
 
     f.run(&[
@@ -153,7 +153,7 @@ fn an_instructions_file_can_be_adopted_too() {
 
     out.assert_clean().assert_stdout_has("instructions");
     assert_eq!(
-        std::fs::read_to_string(f.store().join("AGENTS.md")).unwrap(),
+        std::fs::read_to_string(f.commons().join("AGENTS.md")).unwrap(),
         "# my shared instructions\n"
     );
     assert!(f.is_symlink(".codex/AGENTS.md"));

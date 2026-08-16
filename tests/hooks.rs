@@ -14,7 +14,7 @@ fn machine() -> Fixture {
 }
 
 fn one_hook(f: &Fixture) {
-    f.store_file(
+    f.commons_file(
         "hooks/SessionStart.toml",
         "[[hook]]\nmatcher = \"*\"\ncommand = \"notify session\"\ntimeout = 10\n",
     );
@@ -37,7 +37,7 @@ fn hooks_at(f: &Fixture, rel: &str, root: &str, event: &str) -> Vec<serde_json::
 }
 
 #[test]
-fn a_store_hook_reaches_every_agent_that_takes_hooks() {
+fn a_commons_hook_reaches_every_agent_that_takes_hooks() {
     let f = machine();
     one_hook(&f);
 
@@ -115,8 +115,8 @@ fn our_hook_is_updated_in_place_rather_than_duplicated() {
     one_hook(&f);
     f.run(&["sync"]).assert_clean();
 
-    // The Store changes the timeout.
-    f.store_file(
+    // The Commons changes the timeout.
+    f.commons_file(
         "hooks/SessionStart.toml",
         "[[hook]]\nmatcher = \"*\"\ncommand = \"notify session\"\ntimeout = 99\n",
     );
@@ -124,7 +124,7 @@ fn our_hook_is_updated_in_place_rather_than_duplicated() {
 
     let hooks = hooks_at(&f, ".claude/settings.json", "hooks", "SessionStart");
     assert_eq!(hooks.len(), 1, "no duplicate was appended: {hooks:?}");
-    assert_eq!(hooks[0]["timeout"], 99, "the Store wins");
+    assert_eq!(hooks[0]["timeout"], 99, "the Commons wins");
 }
 
 #[test]
@@ -167,11 +167,11 @@ fn codex_trust_hashes_are_never_touched() {
 }
 
 #[test]
-fn a_hook_removed_from_the_store_is_left_behind_and_reported() {
+fn a_hook_removed_from_the_commons_is_left_behind_and_reported() {
     let f = machine();
     one_hook(&f);
     f.run(&["sync"]).assert_clean();
-    std::fs::remove_file(f.store().join("hooks/SessionStart.toml")).unwrap();
+    std::fs::remove_file(f.commons().join("hooks/SessionStart.toml")).unwrap();
 
     f.run(&["sync"]).assert_clean();
 
@@ -179,7 +179,7 @@ fn a_hook_removed_from_the_store_is_left_behind_and_reported() {
     assert_eq!(
         hooks.len(),
         1,
-        "without state, a vanished Store hook cannot be told from a hand-added one"
+        "without state, a vanished Commons hook cannot be told from a hand-added one"
     );
     f.run(&["status"]).assert_stdout_has("foreign");
 }
@@ -187,7 +187,7 @@ fn a_hook_removed_from_the_store_is_left_behind_and_reported() {
 #[test]
 fn gemini_gets_its_own_event_names() {
     let f = machine();
-    f.store_file("hooks/PreToolUse.toml", "[[hook]]\ncommand = \"guard\"\n");
+    f.commons_file("hooks/PreToolUse.toml", "[[hook]]\ncommand = \"guard\"\n");
 
     f.run(&["sync"]).assert_clean();
 
@@ -212,7 +212,7 @@ fn gemini_gets_its_own_event_names() {
 #[test]
 fn an_event_an_agent_does_not_have_is_skipped_and_reported() {
     let f = machine();
-    f.store_file(
+    f.commons_file(
         "hooks/UserPromptSubmit.toml",
         "[[hook]]\ncommand = \"record\"\n",
     );
@@ -236,7 +236,7 @@ fn an_event_an_agent_does_not_have_is_skipped_and_reported() {
 #[test]
 fn an_unknown_event_name_is_a_clear_error() {
     let f = machine();
-    f.store_file("hooks/NoSuchMoment.toml", "[[hook]]\ncommand = \"x\"\n");
+    f.commons_file("hooks/NoSuchMoment.toml", "[[hook]]\ncommand = \"x\"\n");
 
     f.run(&["sync"])
         .assert_code(1)
@@ -246,7 +246,7 @@ fn an_unknown_event_name_is_a_clear_error() {
 #[test]
 fn only_command_hooks_are_representable() {
     let f = machine();
-    f.store_file(
+    f.commons_file(
         "hooks/SessionStart.toml",
         "[[hook]]\ntype = \"webhook\"\ncommand = \"x\"\n",
     );
@@ -257,7 +257,7 @@ fn only_command_hooks_are_representable() {
 #[test]
 fn a_hook_without_a_command_is_a_clear_error() {
     let f = machine();
-    f.store_file("hooks/SessionStart.toml", "[[hook]]\nmatcher = \"*\"\n");
+    f.commons_file("hooks/SessionStart.toml", "[[hook]]\nmatcher = \"*\"\n");
 
     f.run(&["sync"]).assert_code(1).assert_stderr_has("command");
 }
@@ -265,7 +265,7 @@ fn a_hook_without_a_command_is_a_clear_error() {
 #[test]
 fn a_malformed_hook_file_is_refused_before_anything_is_written() {
     let f = machine();
-    f.store_file("hooks/SessionStart.toml", "this is not [ toml");
+    f.commons_file("hooks/SessionStart.toml", "this is not [ toml");
 
     let out = f.run(&["sync"]);
 
@@ -276,7 +276,7 @@ fn a_malformed_hook_file_is_refused_before_anything_is_written() {
 #[test]
 fn several_hooks_for_one_event_all_arrive() {
     let f = machine();
-    f.store_file(
+    f.commons_file(
         "hooks/SessionStart.toml",
         "[[hook]]\ncommand = \"first\"\n\n[[hook]]\ncommand = \"second\"\n",
     );
@@ -310,7 +310,7 @@ fn a_hook_command_is_written_verbatim_and_converges() {
     let f = machine();
     // The command IS the identity, so it must not vary with the environment:
     // a resolved command would stop matching the reference that produced it.
-    f.store_file(
+    f.commons_file(
         "hooks/SessionStart.toml",
         "[[hook]]\ncommand = \"notify --token ${env:TOKEN}\"\n",
     );
@@ -335,7 +335,7 @@ fn a_hook_command_is_written_verbatim_and_converges() {
 #[test]
 fn a_hook_converges_even_when_the_environment_changes() {
     let f = machine();
-    f.store_file(
+    f.commons_file(
         "hooks/SessionStart.toml",
         "[[hook]]\ncommand = \"notify --token ${env:TOKEN}\"\n",
     );
@@ -352,9 +352,9 @@ fn a_hook_converges_even_when_the_environment_changes() {
 }
 
 #[test]
-fn no_store_hooks_means_no_hook_work() {
+fn no_commons_hooks_means_no_hook_work() {
     let f = machine();
-    f.store_skill("research");
+    f.commons_skill("research");
 
     f.run(&["sync"]).assert_clean();
 
@@ -396,14 +396,14 @@ fn a_foreign_hooks_arguments_are_never_printed() {
 #[test]
 fn changing_the_matcher_moves_the_hook() {
     let f = machine();
-    f.store_file(
+    f.commons_file(
         "hooks/PreToolUse.toml",
         "[[hook]]\nmatcher = \"Bash\"\ncommand = \"guard\"\n",
     );
     f.run(&["sync"]).assert_clean();
 
     // A narrowing constraint the user changed must actually take effect.
-    f.store_file(
+    f.commons_file(
         "hooks/PreToolUse.toml",
         "[[hook]]\nmatcher = \"Write\"\ncommand = \"guard\"\n",
     );
@@ -432,12 +432,12 @@ fn changing_the_matcher_moves_the_hook() {
 #[test]
 fn a_changed_matcher_is_reported_as_drift() {
     let f = machine();
-    f.store_file(
+    f.commons_file(
         "hooks/PreToolUse.toml",
         "[[hook]]\nmatcher = \"Bash\"\ncommand = \"guard\"\n",
     );
     f.run(&["sync"]).assert_clean();
-    f.store_file(
+    f.commons_file(
         "hooks/PreToolUse.toml",
         "[[hook]]\nmatcher = \"Write\"\ncommand = \"guard\"\n",
     );
@@ -450,7 +450,7 @@ fn a_changed_matcher_is_reported_as_drift() {
 #[test]
 fn moving_our_hook_leaves_a_foreign_sibling_where_it_was() {
     let f = machine();
-    f.store_file(
+    f.commons_file(
         "hooks/PreToolUse.toml",
         "[[hook]]\nmatcher = \"Write\"\ncommand = \"guard\"\n",
     );
@@ -493,7 +493,7 @@ fn doctor_knows_about_the_hooks_family() {
 fn a_file_hooks_would_skip_is_warned_about() {
     let f = machine();
     one_hook(&f);
-    f.store_file("hooks/notes.md", "not a hook file\n");
+    f.commons_file("hooks/notes.md", "not a hook file\n");
 
     f.run(&["doctor"]).assert_stderr_has("notes.md");
 }

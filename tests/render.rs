@@ -14,14 +14,14 @@ fn machine() -> Fixture {
 }
 
 fn a_command(f: &Fixture) {
-    f.store_file(
+    f.commons_file(
         "commands/ship.md",
         "---\nname: ship\ndescription: Ship the current branch\n---\n\nDo the thing.\n",
     );
 }
 
 #[test]
-fn a_store_command_becomes_a_gemini_toml_file() {
+fn a_commons_command_becomes_a_gemini_toml_file() {
     let f = machine();
     a_command(&f);
 
@@ -67,12 +67,12 @@ fn markdown_agents_still_get_a_link_not_a_render() {
 }
 
 #[test]
-fn editing_the_store_re_renders_the_file() {
+fn editing_the_commons_re_renders_the_file() {
     let f = machine();
     a_command(&f);
     f.run(&["sync"]).assert_clean();
 
-    f.store_file(
+    f.commons_file(
         "commands/ship.md",
         "---\nname: ship\ndescription: Ship it faster\n---\n\nDo it differently.\n",
     );
@@ -85,11 +85,11 @@ fn editing_the_store_re_renders_the_file() {
 }
 
 #[test]
-fn deleting_the_store_command_prunes_the_rendered_file() {
+fn deleting_the_commons_command_prunes_the_rendered_file() {
     let f = machine();
     a_command(&f);
     f.run(&["sync"]).assert_clean();
-    std::fs::remove_file(f.store().join("commands/ship.md")).unwrap();
+    std::fs::remove_file(f.commons().join("commands/ship.md")).unwrap();
 
     f.run(&["sync"]).assert_clean();
 
@@ -120,10 +120,10 @@ fn a_hand_written_file_at_the_same_path_is_never_touched() {
 #[test]
 fn a_hand_written_file_is_never_pruned_either() {
     let f = machine();
-    // Nothing in the Store claims this name at all.
+    // Nothing in the Commons claims this name at all.
     let theirs = "description = \"theirs\"\nprompt = \"\"\"\nx\n\"\"\"\n";
     f.file(".gemini/commands/plannotator-review.toml", theirs);
-    f.store_file(
+    f.commons_file(
         "commands/other.md",
         "---\ndescription: Other\n---\n\nBody.\n",
     );
@@ -177,7 +177,7 @@ fn a_second_sync_changes_nothing() {
 #[test]
 fn a_command_with_no_frontmatter_still_renders() {
     let f = machine();
-    f.store_file("commands/bare.md", "Just a body, no frontmatter.\n");
+    f.commons_file("commands/bare.md", "Just a body, no frontmatter.\n");
 
     f.run(&["sync"]).assert_clean();
 
@@ -188,7 +188,7 @@ fn a_command_with_no_frontmatter_still_renders() {
 #[test]
 fn awkward_characters_in_the_body_survive() {
     let f = machine();
-    f.store_file(
+    f.commons_file(
         "commands/odd.md",
         "---\ndescription: Has \"quotes\" and \\backslashes\n---\n\nA \"\"\"triple quote\"\"\" and a \\ and \u{e9}.\n",
     );

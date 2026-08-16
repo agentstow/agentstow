@@ -1,4 +1,4 @@
-//! Per-agent MCP dialects. One canonical Store entry, six native shapes.
+//! Per-agent MCP dialects. One canonical Commons entry, six native shapes.
 
 mod common;
 
@@ -25,8 +25,8 @@ fn machine() -> Fixture {
     f
 }
 
-fn stdio_store(f: &Fixture) {
-    f.store_mcp(
+fn stdio_commons(f: &Fixture) {
+    f.commons_mcp(
         r#"{"mcpServers": {"serena": {
              "type": "stdio",
              "command": "uvx",
@@ -40,7 +40,7 @@ fn stdio_store(f: &Fixture) {
 #[test]
 fn codex_gets_toml_tables_not_json() {
     let f = machine();
-    stdio_store(&f);
+    stdio_commons(&f);
 
     f.run(&["sync"]).assert_clean();
 
@@ -63,7 +63,7 @@ fn codex_gets_toml_tables_not_json() {
 #[test]
 fn codex_renames_headers_and_drops_the_command_on_a_remote_server() {
     let f = machine();
-    f.store_mcp(
+    f.commons_mcp(
         r#"{"mcpServers": {"api": {"type": "http", "url": "https://example.test",
              "headers": {"X-Key": "abc"}, "command": "ignored"}}}"#,
     );
@@ -88,12 +88,12 @@ fn codex_renames_headers_and_drops_the_command_on_a_remote_server() {
 #[test]
 fn codex_collapses_sse_onto_the_same_shape_as_http() {
     let f = machine();
-    f.store_mcp(r#"{"mcpServers": {"a": {"type": "sse", "url": "https://x.test"}}}"#);
+    f.commons_mcp(r#"{"mcpServers": {"a": {"type": "sse", "url": "https://x.test"}}}"#);
     f.run(&["sync"]).assert_clean();
     let sse = f.contents(".codex/config.toml");
 
     let g = machine();
-    g.store_mcp(r#"{"mcpServers": {"a": {"type": "http", "url": "https://x.test"}}}"#);
+    g.commons_mcp(r#"{"mcpServers": {"a": {"type": "http", "url": "https://x.test"}}}"#);
     g.run(&["sync"]).assert_clean();
 
     assert_eq!(
@@ -106,7 +106,7 @@ fn codex_collapses_sse_onto_the_same_shape_as_http() {
 #[test]
 fn codex_keeps_every_other_line_of_the_users_config() {
     let f = machine();
-    stdio_store(&f);
+    stdio_commons(&f);
     let original = r#"# my codex config
 model = "gpt-5.3-codex"
 model_reasoning_effort = "high"
@@ -146,7 +146,7 @@ enabled = true
 #[test]
 fn a_second_codex_sync_is_byte_identical() {
     let f = machine();
-    stdio_store(&f);
+    stdio_commons(&f);
     f.run(&["sync"]).assert_clean();
     let first = f.contents(".codex/config.toml");
 
@@ -160,7 +160,7 @@ fn a_second_codex_sync_is_byte_identical() {
 #[test]
 fn a_broken_codex_config_is_reported_and_left_alone() {
     let f = machine();
-    stdio_store(&f);
+    stdio_commons(&f);
     f.file(
         ".codex/config.toml",
         "model = \"gpt-5\"\nthis is not [ valid toml\n",
@@ -183,7 +183,7 @@ fn a_broken_codex_config_is_reported_and_left_alone() {
 #[test]
 fn a_codex_server_map_of_the_wrong_shape_is_refused() {
     let f = machine();
-    stdio_store(&f);
+    stdio_commons(&f);
     f.file(".codex/config.toml", "mcp_servers = 5\n");
 
     let out = f.run(&["sync"]);
@@ -197,7 +197,7 @@ fn a_codex_server_map_of_the_wrong_shape_is_refused() {
 #[test]
 fn opencode_flattens_the_command_and_renames_env() {
     let f = machine();
-    stdio_store(&f);
+    stdio_commons(&f);
 
     f.run(&["sync"]).assert_clean();
 
@@ -216,7 +216,7 @@ fn opencode_flattens_the_command_and_renames_env() {
 #[test]
 fn opencode_calls_a_remote_server_remote() {
     let f = machine();
-    f.store_mcp(
+    f.commons_mcp(
         r#"{"mcpServers": {"api": {"type": "sse", "url": "https://x.test",
              "headers": {"A": "b"}}}}"#,
     );
@@ -232,7 +232,7 @@ fn opencode_calls_a_remote_server_remote() {
 #[test]
 fn opencodes_own_config_survives_a_plugin_style_round_trip() {
     let f = machine();
-    stdio_store(&f);
+    stdio_commons(&f);
     // The real file: $schema first, then the plugin array a plugin rewrites.
     f.file(
         ".config/opencode/opencode.json",
@@ -271,7 +271,7 @@ fn opencodes_own_config_survives_a_plugin_style_round_trip() {
 #[test]
 fn gemini_distinguishes_sse_from_http_by_which_url_key_it_uses() {
     let f = machine();
-    f.store_mcp(
+    f.commons_mcp(
         r#"{"mcpServers": {
              "streamed": {"type": "http", "url": "https://h.test"},
              "evented": {"type": "sse", "url": "https://s.test"}}}"#,
@@ -289,7 +289,7 @@ fn gemini_distinguishes_sse_from_http_by_which_url_key_it_uses() {
 #[test]
 fn gemini_keeps_its_other_settings() {
     let f = machine();
-    stdio_store(&f);
+    stdio_commons(&f);
     f.file(
         ".gemini/settings.json",
         r#"{"security": {"auth": {"selectedType": "oauth"}}, "ui": {"footer": {"items": []}}}"#,
@@ -308,7 +308,7 @@ fn gemini_keeps_its_other_settings() {
 #[test]
 fn windsurf_uses_its_own_url_key() {
     let f = machine();
-    f.store_mcp(r#"{"mcpServers": {"api": {"type": "http", "url": "https://x.test"}}}"#);
+    f.commons_mcp(r#"{"mcpServers": {"api": {"type": "http", "url": "https://x.test"}}}"#);
 
     f.run(&["sync"]).assert_clean();
 
@@ -320,7 +320,7 @@ fn windsurf_uses_its_own_url_key() {
 #[test]
 fn windsurf_leaves_a_stdio_server_alone() {
     let f = machine();
-    stdio_store(&f);
+    stdio_commons(&f);
 
     f.run(&["sync"]).assert_clean();
 
@@ -334,7 +334,7 @@ fn windsurf_leaves_a_stdio_server_alone() {
 #[test]
 fn cursor_and_cline_take_the_standard_shape() {
     let f = machine();
-    stdio_store(&f);
+    stdio_commons(&f);
 
     f.run(&["sync"]).assert_clean();
 
@@ -351,7 +351,7 @@ fn cursor_and_cline_take_the_standard_shape() {
 #[test]
 fn pi_and_oh_my_pi_are_never_written() {
     let f = machine();
-    stdio_store(&f);
+    stdio_commons(&f);
     let pi_before: Vec<String> = f
         .tree()
         .into_iter()
@@ -376,7 +376,7 @@ fn pi_and_oh_my_pi_are_never_written() {
 #[test]
 fn an_unmodelled_key_survives_into_every_dialect() {
     let f = machine();
-    f.store_mcp(r#"{"mcpServers": {"x": {"command": "c", "timeout": 30, "cwd": "/tmp"}}}"#);
+    f.commons_mcp(r#"{"mcpServers": {"x": {"command": "c", "timeout": 30, "cwd": "/tmp"}}}"#);
 
     f.run(&["sync"]).assert_clean();
 
@@ -392,7 +392,7 @@ fn an_unmodelled_key_survives_into_every_dialect() {
 #[test]
 fn one_unset_variable_stops_every_dialect_before_any_file_is_opened() {
     let f = machine();
-    f.store_mcp(r#"{"mcpServers": {"a": {"command": "c", "env": {"K": "${env:NOPE}"}}}}"#);
+    f.commons_mcp(r#"{"mcpServers": {"a": {"command": "c", "env": {"K": "${env:NOPE}"}}}}"#);
 
     let out = f.run(&["sync"]);
 
@@ -410,7 +410,7 @@ fn one_unset_variable_stops_every_dialect_before_any_file_is_opened() {
 #[test]
 fn no_dialect_ever_prints_a_resolved_secret() {
     let f = machine();
-    f.store_mcp(
+    f.commons_mcp(
         r#"{"mcpServers": {"api": {"type": "http", "url": "https://x.test",
              "headers": {"Authorization": "${env:TOKEN}"}}}}"#,
     );
@@ -436,7 +436,7 @@ fn no_dialect_ever_prints_a_resolved_secret() {
 #[test]
 fn every_mcp_capable_agent_is_reported_by_status() {
     let f = machine();
-    stdio_store(&f);
+    stdio_commons(&f);
     f.run(&["sync"]).assert_clean();
 
     let out = f.run(&["status", "--json"]);
@@ -467,7 +467,7 @@ fn every_mcp_capable_agent_is_reported_by_status() {
 #[test]
 fn a_toml_parse_error_never_quotes_the_offending_line() {
     let f = machine();
-    f.store_mcp(
+    f.commons_mcp(
         r#"{"mcpServers": {"api": {"type": "http", "url": "https://x.test",
              "headers": {"Authorization": "${env:TOKEN}"}}}}"#,
     );
@@ -494,7 +494,7 @@ fn a_toml_parse_error_never_quotes_the_offending_line() {
 #[test]
 fn a_comment_above_a_managed_server_survives() {
     let f = machine();
-    stdio_store(&f);
+    stdio_commons(&f);
     f.file(
         ".codex/config.toml",
         "# top of file\n\n# this documents serena\n[mcp_servers.serena]\ncommand = \"old\"\n",
@@ -511,7 +511,7 @@ fn a_comment_above_a_managed_server_survives() {
 #[test]
 fn a_bare_parent_header_the_user_wrote_is_kept() {
     let f = machine();
-    stdio_store(&f);
+    stdio_commons(&f);
     f.file(
         ".codex/config.toml",
         "# ---- MCP ----\n[mcp_servers]\n\n[mcp_servers.serena]\ncommand = \"old\"\n",
@@ -525,9 +525,9 @@ fn a_bare_parent_header_the_user_wrote_is_kept() {
 }
 
 #[test]
-fn a_null_in_the_store_does_not_leave_codex_drifting_forever() {
+fn a_null_in_the_commons_does_not_leave_codex_drifting_forever() {
     let f = machine();
-    f.store_mcp(r#"{"mcpServers": {"x": {"command": "c", "note": null, "env": {"A": null}}}}"#);
+    f.commons_mcp(r#"{"mcpServers": {"x": {"command": "c", "note": null, "env": {"A": null}}}}"#);
 
     f.run(&["sync"]).assert_clean();
     f.run(&["sync"])
@@ -541,7 +541,7 @@ fn a_null_in_the_store_does_not_leave_codex_drifting_forever() {
 fn a_failed_write_is_never_reported_as_up_to_date() {
     let f = machine();
     // An array of objects has no TOML representation inside a server entry.
-    f.store_mcp(r#"{"mcpServers": {"x": {"command": "c", "matrix": [{"a": 1}]}}}"#);
+    f.commons_mcp(r#"{"mcpServers": {"x": {"command": "c", "matrix": [{"a": 1}]}}}"#);
 
     let out = f.run(&["sync"]);
 
@@ -552,7 +552,7 @@ fn a_failed_write_is_never_reported_as_up_to_date() {
 #[test]
 fn a_wrong_typed_server_map_is_reported_rather_than_read_as_empty() {
     let f = machine();
-    stdio_store(&f);
+    stdio_commons(&f);
     f.file(".cursor/mcp.json", r#"{"mcpServers": "not an object"}"#);
 
     let out = f.run(&["status"]);
@@ -565,7 +565,7 @@ fn a_wrong_typed_server_map_is_reported_rather_than_read_as_empty() {
 #[test]
 fn an_integer_too_large_for_toml_is_refused_not_corrupted() {
     let f = machine();
-    f.store_mcp(r#"{"mcpServers": {"x": {"command": "c", "big": 18446744073709551615}}}"#);
+    f.commons_mcp(r#"{"mcpServers": {"x": {"command": "c", "big": 18446744073709551615}}}"#);
 
     let out = f.run(&["sync"]);
 
@@ -576,7 +576,7 @@ fn an_integer_too_large_for_toml_is_refused_not_corrupted() {
 #[test]
 fn the_users_line_endings_survive() {
     let f = machine();
-    stdio_store(&f);
+    stdio_commons(&f);
     f.file(
         ".codex/config.toml",
         "model = \"gpt-5\"\r\n\r\n[other]\r\nkey = 1\r\n",

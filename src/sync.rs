@@ -1,7 +1,8 @@
-//! `sync` — make every Target match the Store.
+//! `sync` — make every Target match the Commons.
 
 use std::path::{Path, PathBuf};
 
+use crate::commons::{self, Commons};
 use crate::config::Config;
 use crate::env::Env;
 use crate::family::Family;
@@ -12,14 +13,13 @@ use crate::lock;
 use crate::mcp;
 use crate::render;
 use crate::report::Reporter;
-use crate::store::{self, Store};
 use crate::target;
 use crate::{EXIT_CLEAN, EXIT_ERROR};
 
 pub fn run(env: &Env, config: &Config, r: &mut Reporter, dry_run: bool) -> i32 {
-    let store = Store::new(env.store());
-    if !store.exists() {
-        r.problem(store::missing_message(store.root()));
+    let commons = Commons::new(env.commons());
+    if !commons.exists() {
+        r.problem(commons::missing_message(commons.root()));
         return EXIT_ERROR;
     }
 
@@ -45,7 +45,7 @@ pub fn run(env: &Env, config: &Config, r: &mut Reporter, dry_run: bool) -> i32 {
     let targets = target::resolve(env, config);
 
     for family in Family::ALL {
-        let scan = store.scan(*family);
+        let scan = commons.scan(*family);
         for issue in &scan.issues {
             r.warn(issue.to_string());
         }
@@ -55,14 +55,14 @@ pub fn run(env: &Env, config: &Config, r: &mut Reporter, dry_run: bool) -> i32 {
                 continue;
             };
             let target_dir = env.in_home(dir);
-            let items = link::survey(&target_dir, store.root(), &scan.entries);
+            let items = link::survey(&target_dir, commons.root(), &scan.entries);
             changes += sync_target(&target.name, dir, &items, env.home(), r, dry_run);
         }
     }
 
-    changes += sync_instructions(env, config, &store, r, dry_run);
+    changes += sync_instructions(env, config, &commons, r, dry_run);
 
-    match sync_mcp(env, config, &store, r, dry_run) {
+    match sync_mcp(env, config, &commons, r, dry_run) {
         Ok(n) => changes += n,
         Err(e) => {
             // Nothing has been written: an MCP failure stops the whole family
@@ -72,7 +72,7 @@ pub fn run(env: &Env, config: &Config, r: &mut Reporter, dry_run: bool) -> i32 {
         }
     }
 
-    match sync_rendered(env, config, &store, r, dry_run) {
+    match sync_rendered(env, config, &commons, r, dry_run) {
         Ok(n) => changes += n,
         Err(e) => {
             r.problem(e.to_string());
@@ -82,7 +82,7 @@ pub fn run(env: &Env, config: &Config, r: &mut Reporter, dry_run: bool) -> i32 {
 
     // Hooks run after MCP because Gemini keeps both in one settings file, and
     // each family re-reads it before merging.
-    match sync_hooks(env, config, &store, r, dry_run) {
+    match sync_hooks(env, config, &commons, r, dry_run) {
         Ok(n) => changes += n,
         Err(e) => {
             r.problem(e.to_string());
@@ -114,11 +114,11 @@ pub fn run(env: &Env, config: &Config, r: &mut Reporter, dry_run: bool) -> i32 {
 fn sync_rendered(
     env: &Env,
     config: &Config,
-    store: &Store,
+    commons: &Commons,
     r: &mut Reporter,
     dry_run: bool,
 ) -> Result<usize, render::Error> {
-    let items = render::survey(env, config, store)?;
+    let items = render::survey(env, config, commons)?;
     let noteworthy: Vec<&render::Item> = items
         .iter()
         .filter(|i| i.state != render::State::Managed)
@@ -160,12 +160,12 @@ fn sync_rendered(
 fn sync_hooks(
     env: &Env,
     config: &Config,
-    store: &Store,
+    commons: &Commons,
     r: &mut Reporter,
     dry_run: bool,
 ) -> Result<usize, hooks::Error> {
-    let store_dir = store.family_dir(store::HOOKS);
-    let survey = hooks::survey(env, config, &store_dir)?;
+    let commons_dir = commons.family_dir(commons::HOOKS);
+    let survey = hooks::survey(env, config, &commons_dir)?;
     for skipped in &survey.skipped {
         r.problem(skipped.clone());
     }
@@ -237,16 +237,16 @@ fn short(command: &str) -> String {
     format!("{head}…")
 }
 
-/// The MCP family: one Store file, rendered and key-merged per agent.
+/// The MCP family: one Commons file, rendered and key-merged per agent.
 fn sync_mcp(
     env: &Env,
     config: &Config,
-    store: &Store,
+    commons: &Commons,
     r: &mut Reporter,
     dry_run: bool,
 ) -> Result<usize, mcp::Error> {
-    let store_file = store.root().join(store::MCP);
-    let survey = mcp::survey(env, config, &store_file)?;
+    let commons_file = commons.root().join(commons::MCP);
+    let survey = mcp::survey(env, config, &commons_file)?;
     // A config agentstow cannot parse is a real fault worth an exit code, but
     // it must not stop the Targets that are healthy.
     for skipped in &survey.skipped {
@@ -314,16 +314,16 @@ fn sync_mcp(
     Ok(written)
 }
 
-/// The instructions family: one Store file, three per-agent mechanisms.
+/// The instructions family: one Commons file, three per-agent mechanisms.
 fn sync_instructions(
     env: &Env,
     config: &Config,
-    store: &Store,
+    commons: &Commons,
     r: &mut Reporter,
     dry_run: bool,
 ) -> usize {
-    let store_file = store.root().join(store::INSTRUCTIONS);
-    let items = instructions::survey(env, config, &store_file);
+    let commons_file = commons.root().join(commons::INSTRUCTIONS);
+    let items = instructions::survey(env, config, &commons_file);
     let noteworthy: Vec<&instructions::Item> = items
         .iter()
         .filter(|i| i.state != instructions::State::Linked)

@@ -2,19 +2,19 @@
 //!
 //! `remove` is the one operation in the whole tool that deletes something from
 //! a Target. That is deliberate: without state, a name that has vanished from
-//! the Store cannot be told apart from one a user added by hand, so removal has
+//! the Commons cannot be told apart from one a user added by hand, so removal has
 //! to be asked for by name rather than inferred (ADR-0002).
 
 use serde_json::json;
 use std::collections::BTreeMap;
 
+use crate::commons::{self, Commons};
 use crate::config::Config;
 use crate::config_edit;
 use crate::env::Env;
 use crate::mcp::{self, State};
 use crate::registry::Mcp;
 use crate::report::Reporter;
-use crate::store::{self, Store};
 use crate::target::{self, Target};
 use crate::{EXIT_ACTIONABLE, EXIT_CLEAN, EXIT_ERROR};
 
@@ -25,10 +25,10 @@ struct Row {
 }
 
 pub fn list(env: &Env, config: &Config, r: &mut Reporter, as_json: bool) -> i32 {
-    let store = Store::new(env.store());
-    let store_file = store.root().join(store::MCP);
+    let commons = Commons::new(env.commons());
+    let commons_file = commons.root().join(commons::MCP);
 
-    let survey = match mcp::survey(env, config, &store_file) {
+    let survey = match mcp::survey(env, config, &commons_file) {
         Ok(survey) => survey,
         Err(e) => {
             r.problem(e.to_string());
@@ -39,7 +39,7 @@ pub fn list(env: &Env, config: &Config, r: &mut Reporter, as_json: bool) -> i32 
         r.problem(skipped.clone());
     }
 
-    let store_names: Vec<String> = match mcp::store_servers(&store_file) {
+    let commons_names: Vec<String> = match mcp::commons_servers(&commons_file) {
         Ok(servers) => servers.keys().cloned().collect(),
         Err(e) => {
             r.problem(e.to_string());
@@ -47,8 +47,8 @@ pub fn list(env: &Env, config: &Config, r: &mut Reporter, as_json: bool) -> i32 
         }
     };
 
-    // Group by server name, Store servers first, then anything Foreign.
-    let mut names = store_names.clone();
+    // Group by server name, Commons servers first, then anything Foreign.
+    let mut names = commons_names.clone();
     for item in &survey.items {
         if !names.contains(&item.name) {
             names.push(item.name.clone());
@@ -59,7 +59,7 @@ pub fn list(env: &Env, config: &Config, r: &mut Reporter, as_json: bool) -> i32 
         if as_json {
             r.json(&json!({"servers": []}));
         } else {
-            r.line("no MCP servers in the Store, and none found in any agent's config");
+            r.line("no MCP servers in the Commons, and none found in any agent's config");
         }
         return EXIT_CLEAN;
     }
@@ -78,7 +78,7 @@ pub fn list(env: &Env, config: &Config, r: &mut Reporter, as_json: bool) -> i32 
             })
             .collect();
         actionable += rows.iter().filter(|row| row.state.actionable()).count();
-        let managed = store_names.contains(name);
+        let managed = commons_names.contains(name);
 
         if as_json {
             payload.push(json!({
@@ -91,7 +91,11 @@ pub fn list(env: &Env, config: &Config, r: &mut Reporter, as_json: bool) -> i32 
                 })).collect::<Vec<_>>(),
             }));
         } else {
-            let origin = if managed { "Store" } else { "not in the Store" };
+            let origin = if managed {
+                "Commons"
+            } else {
+                "not in the Commons"
+            };
             r.line(format!("{name}  ({origin})"));
             for row in &rows {
                 r.line(format!("  {:<10} {}", row.state.label(), row.agent));
@@ -113,10 +117,10 @@ pub fn list(env: &Env, config: &Config, r: &mut Reporter, as_json: bool) -> i32 
 }
 
 pub fn remove(env: &Env, config: &Config, r: &mut Reporter, name: &str) -> i32 {
-    let store = Store::new(env.store());
-    let store_file = store.root().join(store::MCP);
+    let commons = Commons::new(env.commons());
+    let commons_file = commons.root().join(commons::MCP);
 
-    let mut servers = match mcp::store_servers(&store_file) {
+    let mut servers = match mcp::commons_servers(&commons_file) {
         Ok(servers) => servers,
         Err(e) => {
             r.problem(e.to_string());
@@ -126,7 +130,7 @@ pub fn remove(env: &Env, config: &Config, r: &mut Reporter, name: &str) -> i32 {
 
     if !servers.contains_key(name) {
         r.problem(format!(
-            "`{name}` is not in the Store — agentstow only removes servers it manages"
+            "`{name}` is not in the Commons — agentstow only removes servers it manages"
         ));
         return EXIT_ERROR;
     }
@@ -139,7 +143,7 @@ pub fn remove(env: &Env, config: &Config, r: &mut Reporter, name: &str) -> i32 {
         }
     };
 
-    // Targets first, then the config, then the Store: at every point in between,
+    // Targets first, then the config, then the Commons: at every point in between,
     // what remains is still coherent.
     for target in target::resolve(env, config) {
         let Some((path, root_key, format)) = mcp_destination(env, &target) else {
@@ -157,11 +161,11 @@ pub fn remove(env: &Env, config: &Config, r: &mut Reporter, name: &str) -> i32 {
     }
 
     servers.shift_remove(name);
-    if let Err(e) = mcp::store_write(&store_file, &servers) {
+    if let Err(e) = mcp::commons_write(&commons_file, &servers) {
         r.problem(e.to_string());
         return EXIT_ERROR;
     }
-    r.line(format!("removed {name} from the Store"));
+    r.line(format!("removed {name} from the Commons"));
 
     if r.problem_count() > 0 {
         EXIT_ERROR
@@ -215,9 +219,9 @@ pub fn adopt(env: &Env, config: &Config, r: &mut Reporter, spec: Option<&str>, a
         return EXIT_CLEAN;
     }
 
-    let store = Store::new(env.store());
-    let store_file = store.root().join(store::MCP);
-    let mut servers = match mcp::store_servers(&store_file) {
+    let commons = Commons::new(env.commons());
+    let commons_file = commons.root().join(commons::MCP);
+    let mut servers = match mcp::commons_servers(&commons_file) {
         Ok(servers) => servers,
         Err(e) => {
             r.problem(e.to_string());
@@ -281,7 +285,7 @@ pub fn adopt(env: &Env, config: &Config, r: &mut Reporter, spec: Option<&str>, a
             && existing != &absorbed.canonical
         {
             r.problem(format!(
-                "`{name}` differs from the Store copy — merge it by hand; agentstow will not \
+                "`{name}` differs from the Commons copy — merge it by hand; agentstow will not \
                  choose which side to discard"
             ));
             continue;
@@ -338,7 +342,7 @@ pub fn adopt(env: &Env, config: &Config, r: &mut Reporter, spec: Option<&str>, a
         }
 
         if known.is_some() {
-            r.line(format!("{name} is already in the Store"));
+            r.line(format!("{name} is already in the Commons"));
         } else {
             servers.insert(name.clone(), absorbed.canonical.clone());
             adopted += 1;
@@ -357,7 +361,7 @@ pub fn adopt(env: &Env, config: &Config, r: &mut Reporter, spec: Option<&str>, a
     }
 
     if adopted > 0
-        && let Err(e) = mcp::store_write(&store_file, &servers)
+        && let Err(e) = mcp::commons_write(&commons_file, &servers)
     {
         r.problem(e.to_string());
         return EXIT_ERROR;
@@ -388,7 +392,7 @@ fn mcp_destination(
 }
 
 /// Adoption copies values verbatim out of an agent's config, so a credential
-/// somebody typed there lands in the Store — the file this design encourages
+/// somebody typed there lands in the Commons — the file this design encourages
 /// committing. Say so, by key name only.
 fn warn_about_literal_secrets(name: &str, canonical: &serde_json::Value, r: &mut Reporter) {
     const SUSPICIOUS: &[&str] = &["token", "secret", "password", "passwd", "key", "auth"];
@@ -415,7 +419,7 @@ fn warn_about_literal_secrets(name: &str, canonical: &serde_json::Value, r: &mut
     if !found.is_empty() {
         found.sort();
         r.warn(format!(
-            "`{name}`: {} look like credentials and were copied into the Store as written — \
+            "`{name}`: {} look like credentials and were copied into the Commons as written — \
              replace them with ${{env:VAR}} before committing it",
             found.join(", ")
         ));

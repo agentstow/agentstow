@@ -1,4 +1,4 @@
-//! The instructions family — one Store `AGENTS.md`, three mechanisms, and a
+//! The instructions family — one Commons `AGENTS.md`, three mechanisms, and a
 //! conflict where another tool already owns the destination.
 
 mod common;
@@ -19,7 +19,7 @@ fn machine() -> Fixture {
     ] {
         f.agent(root);
     }
-    f.store_file("AGENTS.md", "# shared instructions\n");
+    f.commons_file("AGENTS.md", "# shared instructions\n");
     f
 }
 
@@ -140,16 +140,16 @@ fn agents_without_an_instructions_surface_get_nothing() {
 }
 
 #[test]
-fn no_store_instructions_means_no_instructions_work() {
+fn no_commons_instructions_means_no_instructions_work() {
     let f = Fixture::new();
     f.agent(".codex");
-    f.store_skill("research");
+    f.commons_skill("research");
 
     f.run(&["sync"]).assert_clean();
 
     assert!(
         !f.present(".codex/AGENTS.md"),
-        "an absent Store file is a family the user does not use, not a problem"
+        "an absent Commons file is a family the user does not use, not a problem"
     );
 }
 
@@ -180,7 +180,7 @@ fn a_second_sync_leaves_the_instructions_alone() {
 }
 
 #[test]
-fn prose_mentioning_the_store_path_is_not_an_import() {
+fn prose_mentioning_the_commons_path_is_not_an_import() {
     let f = machine();
     // The path appears, but no line actually imports it.
     f.file(

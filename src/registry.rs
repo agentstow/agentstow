@@ -15,7 +15,7 @@ use crate::family::Family;
 pub enum Skills {
     /// Symlink fan-out into this home-relative directory.
     FanOut(&'static str),
-    /// The agent reads the Store directly; nothing to do.
+    /// The agent reads the Commons directly; nothing to do.
     Native,
     /// The agent has no skill surface.
     None,
@@ -27,7 +27,7 @@ pub enum Skills {
 /// conflict), not a separate mechanism — every mechanism below yields to one.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Instructions {
-    /// Symlink the Store `AGENTS.md` to this home-relative path.
+    /// Symlink the Commons `AGENTS.md` to this home-relative path.
     Symlink(&'static str),
     /// Ensure an import line inside this home-relative user-owned file.
     ImportLine(&'static str),
@@ -80,7 +80,7 @@ pub enum Mcp {
 /// How an agent gets slash commands.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Commands {
-    /// Symlink fan-out of Store markdown into this home-relative directory.
+    /// Symlink fan-out of Commons markdown into this home-relative directory.
     FanOut(&'static str),
     /// Render whole files (carrying the Marker) into this home-relative directory.
     Render { dir: &'static str, format: Format },
@@ -177,7 +177,7 @@ impl Agent {
 fn describe_skills(c: Skills) -> String {
     match c {
         Skills::FanOut(dir) => format!("fan-out → {dir}"),
-        Skills::Native => "native (reads the Store)".into(),
+        Skills::Native => "native (reads the Commons)".into(),
         Skills::None => "none".into(),
     }
 }
@@ -265,7 +265,7 @@ pub const AGENTS: &[Agent] = &[
     Agent {
         name: "opencode",
         root: ".config/opencode",
-        // OpenCode scans ~/.agents/skills natively. The Store path is an interop
+        // OpenCode scans ~/.agents/skills natively. The Commons path is an interop
         // contract other agents hardcode (ADR-0004), not agentstow's private
         // choice, so fan-out here would only create duplicate-name warnings.
         skills: Skills::Native,
@@ -320,7 +320,7 @@ pub const AGENTS: &[Agent] = &[
         name: "hermes",
         root: ".hermes",
         // Hermes Agent discovers symlinked skills since it began walking with
-        // `followlinks=True`. It can also read the Store directly through its
+        // `followlinks=True`. It can also read the Commons directly through its
         // `skills.external_dirs` setting — but that is user configuration
         // agentstow does not write, and a capability the registry claims must be
         // true unconditionally, so this row states the mechanism that always

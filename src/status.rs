@@ -5,6 +5,7 @@
 
 use serde_json::{Value, json};
 
+use crate::commons::{self, Commons};
 use crate::config::Config;
 use crate::env::Env;
 use crate::family::Family;
@@ -14,7 +15,6 @@ use crate::link::{self, Item, State};
 use crate::mcp;
 use crate::render;
 use crate::report::Reporter;
-use crate::store::{self, Store};
 use crate::target;
 use crate::{EXIT_ACTIONABLE, EXIT_CLEAN, EXIT_ERROR};
 
@@ -27,9 +27,9 @@ struct TargetReport {
 }
 
 pub fn run(env: &Env, config: &Config, r: &mut Reporter, as_json: bool) -> i32 {
-    let store = Store::new(env.store());
-    if !store.exists() {
-        r.problem(store::missing_message(store.root()));
+    let commons = Commons::new(env.commons());
+    if !commons.exists() {
+        r.problem(commons::missing_message(commons.root()));
         return EXIT_ERROR;
     }
 
@@ -38,7 +38,7 @@ pub fn run(env: &Env, config: &Config, r: &mut Reporter, as_json: bool) -> i32 {
     let resolved = target::resolve(env, config);
 
     for family in Family::ALL {
-        let scan = store.scan(*family);
+        let scan = commons.scan(*family);
         for issue in &scan.issues {
             r.warn(issue.to_string());
         }
@@ -47,7 +47,7 @@ pub fn run(env: &Env, config: &Config, r: &mut Reporter, as_json: bool) -> i32 {
             let Some(dir) = target.fanout_dir(*family) else {
                 continue;
             };
-            let items = link::survey(&env.in_home(dir), store.root(), &scan.entries);
+            let items = link::survey(&env.in_home(dir), commons.root(), &scan.entries);
             targets.push(TargetReport {
                 agent: target.name.clone(),
                 family: family.name(),
@@ -57,10 +57,10 @@ pub fn run(env: &Env, config: &Config, r: &mut Reporter, as_json: bool) -> i32 {
         }
     }
 
-    let store_file = store.root().join(store::INSTRUCTIONS);
-    let instruction_items = instructions::survey(env, config, &store_file);
+    let commons_file = commons.root().join(commons::INSTRUCTIONS);
+    let instruction_items = instructions::survey(env, config, &commons_file);
 
-    let mcp_survey = match mcp::survey(env, config, &store.root().join(store::MCP)) {
+    let mcp_survey = match mcp::survey(env, config, &commons.root().join(commons::MCP)) {
         Ok(survey) => survey,
         Err(e) => {
             r.problem(e.to_string());
@@ -74,7 +74,7 @@ pub fn run(env: &Env, config: &Config, r: &mut Reporter, as_json: bool) -> i32 {
     }
     let mcp_items = mcp_survey.items;
 
-    let hook_survey = match hooks::survey(env, config, &store.family_dir(store::HOOKS)) {
+    let hook_survey = match hooks::survey(env, config, &commons.family_dir(commons::HOOKS)) {
         Ok(survey) => survey,
         Err(e) => {
             r.problem(e.to_string());
@@ -86,7 +86,7 @@ pub fn run(env: &Env, config: &Config, r: &mut Reporter, as_json: bool) -> i32 {
     }
     let hook_items = hook_survey.items;
 
-    let rendered_items = match render::survey(env, config, &store) {
+    let rendered_items = match render::survey(env, config, &commons) {
         Ok(items) => items,
         Err(e) => {
             r.problem(e.to_string());
@@ -112,7 +112,7 @@ pub fn run(env: &Env, config: &Config, r: &mut Reporter, as_json: bool) -> i32 {
 
     if as_json {
         r.json(&as_value(
-            &store,
+            &commons,
             &targets,
             &instruction_items,
             &mcp_items,
@@ -246,7 +246,7 @@ fn human(
 }
 
 fn as_value(
-    store: &Store,
+    commons: &Commons,
     targets: &[TargetReport],
     instruction_items: &[instructions::Item],
     mcp_items: &[mcp::Item],
@@ -326,7 +326,7 @@ fn as_value(
         .collect();
 
     json!({
-        "store": store.root().display().to_string(),
+        "commons": commons.root().display().to_string(),
         "instructions": instructions,
         "mcp": mcp,
         "hooks": hooks,

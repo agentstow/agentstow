@@ -10,6 +10,7 @@ use std::ffi::CString;
 use std::os::unix::ffi::OsStrExt;
 use std::path::Path;
 
+use crate::commons::{self, Commons};
 use crate::config::Config;
 use crate::env::Env;
 use crate::family::Family;
@@ -17,36 +18,35 @@ use crate::link;
 use crate::registry;
 use crate::registry::Skills;
 use crate::report::Reporter;
-use crate::store::{self, Store};
 use crate::target;
 
 pub fn run(env: &Env, config: &Config, r: &mut Reporter) -> i32 {
-    let store = Store::new(env.store());
+    let commons = Commons::new(env.commons());
 
-    r.line(format!("Store   {}", store.root().display()));
+    r.line(format!("Commons {}", commons.root().display()));
     r.line(format!("Home    {}", env.home().display()));
     r.line(format!("Config  {}", env.config_dir().display()));
     r.blank();
 
-    if store.exists() {
-        report_store(&store, r);
+    if commons.exists() {
+        report_commons(&commons, r);
     } else {
-        r.problem(store::missing_message(store.root()));
+        r.problem(commons::missing_message(commons.root()));
     }
 
-    report_store_override(env, config, r);
+    report_commons_override(env, config, r);
     report_agents(env, config, r);
 
     r.verdict()
 }
 
-fn report_store(store: &Store, r: &mut Reporter) {
-    let scans: Vec<(Family, store::Scan)> = Family::ALL
+fn report_commons(commons: &Commons, r: &mut Reporter) {
+    let scans: Vec<(Family, commons::Scan)> = Family::ALL
         .iter()
-        .map(|family| (*family, store.scan(*family)))
+        .map(|family| (*family, commons.scan(*family)))
         .collect();
 
-    let hooks = store.family_dir(store::HOOKS);
+    let hooks = commons.family_dir(commons::HOOKS);
     let hook_files: Vec<String> = std::fs::read_dir(&hooks)
         .map(|entries| {
             entries
@@ -56,18 +56,18 @@ fn report_store(store: &Store, r: &mut Reporter) {
         })
         .unwrap_or_default();
 
-    let instructions = if store.root().join(store::INSTRUCTIONS).exists() {
+    let instructions = if commons.root().join(commons::INSTRUCTIONS).exists() {
         "present"
     } else {
         "absent"
     };
-    let mcp = if store.root().join(store::MCP).exists() {
+    let mcp = if commons.root().join(commons::MCP).exists() {
         "present"
     } else {
         "absent"
     };
 
-    r.line("Store contents:");
+    r.line("Commons contents:");
     for (family, scan) in &scans {
         r.line(format!("  {:<13} {}", family.name(), scan.entries.len()));
     }
@@ -81,9 +81,9 @@ fn report_store(store: &Store, r: &mut Reporter) {
     r.line(format!("  mcp.json      {mcp}"));
     r.blank();
 
-    let others = co_tenants(store);
+    let others = co_tenants(commons);
     if !others.is_empty() {
-        r.line("Other tools in the Store:");
+        r.line("Other tools in the Commons:");
         for name in &others {
             r.line(format!("  {name}"));
         }
@@ -100,30 +100,30 @@ fn report_store(store: &Store, r: &mut Reporter) {
     // would be skipped in silence — the failure this tool exists to end.
     for name in hook_files.iter().filter(|n| !n.ends_with(".toml")) {
         r.warn(format!(
-            "store hooks/{name}: not a `<Event>.toml` file, skipped"
+            "Commons hooks/{name}: not a `<Event>.toml` file, skipped"
         ));
     }
 }
 
-/// Names at the Store root that are not agentstow's own families.
+/// Names at the Commons root that are not agentstow's own families.
 ///
-/// The Store is a shared commons, not agentstow's private directory (ADR-0004):
+/// The Commons is a shared commons, not agentstow's private directory (ADR-0004):
 /// opencode, oh-my-pi and hermes read `~/.agents/` themselves, and the `skills`
 /// CLI keeps its lock file there. An unrecognised name is a neighbour, not a
 /// fault — so these are named and never counted, never called an issue, and
 /// never touched. agentstow can read filenames but not authorship, so it must
 /// not claim how many *tools* are present, only which entries are not its own.
-fn co_tenants(store: &Store) -> Vec<String> {
+fn co_tenants(commons: &Commons) -> Vec<String> {
     const OURS: &[&str] = &[
-        store::SKILLS,
-        store::COMMANDS,
-        store::SUBAGENTS,
-        store::HOOKS,
-        store::INSTRUCTIONS,
-        store::MCP,
+        commons::SKILLS,
+        commons::COMMANDS,
+        commons::SUBAGENTS,
+        commons::HOOKS,
+        commons::INSTRUCTIONS,
+        commons::MCP,
     ];
 
-    let Ok(read) = std::fs::read_dir(store.root()) else {
+    let Ok(read) = std::fs::read_dir(commons.root()) else {
         return Vec::new();
     };
     let mut names: Vec<String> = read
@@ -135,13 +135,13 @@ fn co_tenants(store: &Store) -> Vec<String> {
     names
 }
 
-/// Warn when a relocated Store is invisible to the agents that read the
+/// Warn when a relocated Commons is invisible to the agents that read the
 /// canonical path themselves.
 ///
-/// `AGENTSTOW_HOME` moves agentstow's Store, but it cannot move the path a
+/// `AGENTSTOW_HOME` moves agentstow's Commons, but it cannot move the path a
 /// Native agent hardcodes. Those agents keep reading `~/.agents/` and silently
 /// diverge from every agent that gets fan-out — so name them.
-fn report_store_override(env: &Env, config: &Config, r: &mut Reporter) {
+fn report_commons_override(env: &Env, config: &Config, r: &mut Reporter) {
     if env
         .var("AGENTSTOW_HOME")
         .filter(|v| !v.is_empty())
@@ -150,8 +150,8 @@ fn report_store_override(env: &Env, config: &Config, r: &mut Reporter) {
         return;
     }
 
-    let canonical = env.home().join(crate::env::STORE_DIR);
-    if link::normalize(env.store()) == link::normalize(&canonical) {
+    let canonical = env.home().join(crate::env::COMMONS_DIR);
+    if link::normalize(env.commons()) == link::normalize(&canonical) {
         return;
     }
 
@@ -166,9 +166,9 @@ fn report_store_override(env: &Env, config: &Config, r: &mut Reporter) {
     }
 
     r.warn(format!(
-        "AGENTSTOW_HOME points the Store at {}, but {} read {} directly \
+        "AGENTSTOW_HOME points the Commons at {}, but {} read {} directly \
          and will not see it",
-        env.store().display(),
+        env.commons().display(),
         native.join(" and "),
         canonical.display()
     ));

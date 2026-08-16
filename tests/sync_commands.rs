@@ -25,7 +25,7 @@ fn machine() -> Fixture {
 #[test]
 fn commands_reach_every_agent_that_reads_markdown_commands() {
     let f = machine();
-    f.store_file("commands/ship.md", "---\nname: ship\n---\n\nship it\n");
+    f.commons_file("commands/ship.md", "---\nname: ship\n---\n\nship it\n");
 
     f.run(&["sync"]).assert_clean();
 
@@ -41,7 +41,7 @@ fn commands_reach_every_agent_that_reads_markdown_commands() {
         assert!(f.is_symlink(&rel), "{rel} should be a symlink");
         assert_eq!(
             f.resolves_to(&rel),
-            std::fs::canonicalize(f.store().join("commands/ship.md")).unwrap()
+            std::fs::canonicalize(f.commons().join("commands/ship.md")).unwrap()
         );
     }
 }
@@ -49,7 +49,7 @@ fn commands_reach_every_agent_that_reads_markdown_commands() {
 #[test]
 fn the_md_suffix_survives_into_the_target() {
     let f = machine();
-    f.store_file("commands/ship.md", "ship\n");
+    f.commons_file("commands/ship.md", "ship\n");
 
     f.run(&["sync"]).assert_clean();
 
@@ -61,7 +61,7 @@ fn the_md_suffix_survives_into_the_target() {
 #[test]
 fn commands_do_not_reach_agents_that_need_rendering_or_have_no_surface() {
     let f = machine();
-    f.store_file("commands/ship.md", "ship\n");
+    f.commons_file("commands/ship.md", "ship\n");
 
     f.run(&["sync"]).assert_clean();
 
@@ -75,7 +75,7 @@ fn commands_do_not_reach_agents_that_need_rendering_or_have_no_surface() {
 #[test]
 fn subagents_reach_only_claude_and_opencode() {
     let f = machine();
-    f.store_file(
+    f.commons_file(
         "subagents/reviewer.md",
         "---\nname: reviewer\n---\n\nreview\n",
     );
@@ -93,9 +93,9 @@ fn subagents_reach_only_claude_and_opencode() {
 #[test]
 fn every_family_is_reported_separately_in_status() {
     let f = machine();
-    f.store_skill("research");
-    f.store_file("commands/ship.md", "ship\n");
-    f.store_file("subagents/reviewer.md", "review\n");
+    f.commons_skill("research");
+    f.commons_file("commands/ship.md", "ship\n");
+    f.commons_file("subagents/reviewer.md", "review\n");
 
     let out = f.run(&["status", "--json"]);
     out.assert_code(2);
@@ -117,7 +117,7 @@ fn every_family_is_reported_separately_in_status() {
 #[test]
 fn a_command_variant_is_preserved_like_any_other() {
     let f = machine();
-    f.store_file("commands/ship.md", "the store version\n");
+    f.commons_file("commands/ship.md", "the Commons version\n");
     f.file(".claude/commands/ship.md", "a claude-specific version\n");
 
     f.run(&["sync"]).assert_clean();
@@ -132,9 +132,9 @@ fn a_command_variant_is_preserved_like_any_other() {
 #[test]
 fn a_deleted_command_is_pruned_from_every_target() {
     let f = machine();
-    f.store_file("commands/ship.md", "ship\n");
+    f.commons_file("commands/ship.md", "ship\n");
     f.run(&["sync"]).assert_clean();
-    std::fs::remove_file(f.store().join("commands/ship.md")).unwrap();
+    std::fs::remove_file(f.commons().join("commands/ship.md")).unwrap();
 
     f.run(&["sync"]).assert_clean();
 
@@ -145,7 +145,7 @@ fn a_deleted_command_is_pruned_from_every_target() {
 #[test]
 fn a_non_markdown_file_in_a_markdown_family_is_reported_not_synced() {
     let f = machine();
-    f.store_file("commands/notes.txt", "not a command\n");
+    f.commons_file("commands/notes.txt", "not a command\n");
 
     let out = f.run(&["sync"]);
 

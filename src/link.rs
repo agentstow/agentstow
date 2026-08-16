@@ -1,13 +1,13 @@
 //! Link identity: the fan-out engine shared by every symlink family.
 //!
 //! Ownership is established by where a link *points*, not by any bookkeeping
-//! (ADR-0001): a symlink resolving into the Store is agentstow's to canonicalise
+//! (ADR-0001): a symlink resolving into the Commons is agentstow's to canonicalise
 //! or prune, and anything else — a link elsewhere, a real file or directory — is
 //! left exactly as found.
 //!
 //! Resolution here is deliberately lexical. A dangling link still has to be
 //! classified, and following it is impossible; comparing link text against the
-//! Store path textually gives the same answer for live and broken links alike.
+//! Commons path textually gives the same answer for live and broken links alike.
 //!
 //! [`survey`] produces the whole picture of one Target directory; `sync` applies
 //! the items that need changing and `status` reports all of them, so both
@@ -19,7 +19,7 @@ use std::fs;
 use std::io;
 use std::path::{Component, Path, PathBuf};
 
-use crate::store::Entry;
+use crate::commons::Entry;
 
 /// Resolve `.` and `..` textually, without touching the filesystem.
 pub fn normalize(path: &Path) -> PathBuf {
@@ -64,7 +64,7 @@ pub fn create_symlink(text: &Path, at: &Path) -> io::Result<()> {
 
 /// Windows symlinks are typed, so the flavour comes from what `text` resolves
 /// to right now — a dangling target defaults to a file link, matching what
-/// every Store family links to when the entry is a file. Creation without
+/// every Commons family links to when the entry is a file. Creation without
 /// Developer Mode or elevation fails with os error 1314; that code is
 /// translated into the fix, because the raw message names a privilege no
 /// normal user has heard of.
@@ -136,7 +136,7 @@ pub fn relative_from(base: &Path, target: &Path) -> PathBuf {
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum Found {
     Absent,
-    /// A symlink pointing into the Store — ours.
+    /// A symlink pointing into the Commons — ours.
     Ours {
         text: PathBuf,
         resolved: PathBuf,
@@ -148,7 +148,7 @@ enum Found {
     Variant,
 }
 
-fn classify(path: &Path, store: &Path) -> Found {
+fn classify(path: &Path, commons: &Path) -> Found {
     let Ok(meta) = fs::symlink_metadata(path) else {
         return Found::Absent;
     };
@@ -160,7 +160,7 @@ fn classify(path: &Path, store: &Path) -> Found {
     };
 
     let resolved = resolve_link(path, &text);
-    if resolved.starts_with(normalize(store)) {
+    if resolved.starts_with(normalize(commons)) {
         Found::Ours {
             text,
             resolved,
@@ -174,19 +174,19 @@ fn classify(path: &Path, store: &Path) -> Found {
 /// The state of one name in one Target directory.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum State {
-    /// A canonical link onto the right Store entry — nothing to do.
+    /// A canonical link onto the right Commons entry — nothing to do.
     Linked,
-    /// The Store has this entry and the Target does not.
+    /// The Commons has this entry and the Target does not.
     Missing,
     /// Our link, but not in canonical form (absolute, or onto the wrong entry).
     Stale,
-    /// Our link, pointing at a Store entry that no longer exists.
+    /// Our link, pointing at a Commons entry that no longer exists.
     Dangling,
-    /// A real object shadowing a Store entry, byte-identical to it.
+    /// A real object shadowing a Commons entry, byte-identical to it.
     VariantIdentical,
-    /// A real object shadowing a Store entry, deliberately different.
+    /// A real object shadowing a Commons entry, deliberately different.
     VariantDiverged,
-    /// Not ours: a link resolving outside the Store.
+    /// Not ours: a link resolving outside the Commons.
     Foreign,
 }
 
@@ -221,8 +221,8 @@ impl State {
             State::Linked => "",
             State::Missing => "not linked yet",
             State::Stale => "not in canonical form",
-            State::Dangling => "Store entry is gone",
-            State::VariantIdentical => "identical to the Store — could be re-linked",
+            State::Dangling => "Commons entry is gone",
+            State::VariantIdentical => "identical to the Commons — could be re-linked",
             State::VariantDiverged => "left alone",
             State::Foreign => "not ours — left alone",
         }
@@ -235,16 +235,16 @@ pub struct Item {
     pub name: String,
     pub path: PathBuf,
     pub state: State,
-    /// Canonical link text, when there is a Store entry to point at.
+    /// Canonical link text, when there is a Commons entry to point at.
     pub canonical: Option<PathBuf>,
 }
 
-/// Survey one Target directory against the Store entries destined for it.
+/// Survey one Target directory against the Commons entries destined for it.
 ///
-/// Pruning is limited to *dangling* links into the Store: a live link onto a
-/// Store entry that simply is not being synced right now stays, because removing
+/// Pruning is limited to *dangling* links into the Commons: a live link onto a
+/// Commons entry that simply is not being synced right now stays, because removing
 /// it would be guessing.
-pub fn survey(target_dir: &Path, store: &Path, entries: &[Entry]) -> Vec<Item> {
+pub fn survey(target_dir: &Path, commons: &Path, entries: &[Entry]) -> Vec<Item> {
     let mut items = Vec::new();
     let wanted: BTreeSet<&str> = entries.iter().map(|e| e.file_name.as_str()).collect();
 
@@ -252,7 +252,7 @@ pub fn survey(target_dir: &Path, store: &Path, entries: &[Entry]) -> Vec<Item> {
         let path = target_dir.join(&entry.file_name);
         let canonical = relative_from(target_dir, &entry.path);
 
-        let state = match classify(&path, store) {
+        let state = match classify(&path, commons) {
             Found::Absent => State::Missing,
             Found::Ours { text, resolved, .. } => {
                 if resolved == normalize(&entry.path) && text == canonical {
@@ -290,7 +290,7 @@ pub fn survey(target_dir: &Path, store: &Path, entries: &[Entry]) -> Vec<Item> {
                 continue;
             }
             let path = found.path();
-            let state = match classify(&path, store) {
+            let state = match classify(&path, commons) {
                 Found::Ours { dangling: true, .. } => State::Dangling,
                 Found::Foreign => State::Foreign,
                 _ => continue,
@@ -316,7 +316,7 @@ pub fn apply(item: &Item) -> io::Result<()> {
             let text = item
                 .canonical
                 .as_ref()
-                .expect("missing implies a Store entry");
+                .expect("missing implies a Commons entry");
             if let Some(parent) = item.path.parent() {
                 fs::create_dir_all(parent)?;
             }
@@ -326,7 +326,7 @@ pub fn apply(item: &Item) -> io::Result<()> {
             let text = item
                 .canonical
                 .as_ref()
-                .expect("stale implies a Store entry");
+                .expect("stale implies a Commons entry");
             fs::remove_file(&item.path)?;
             create_symlink(text, &item.path)
         }

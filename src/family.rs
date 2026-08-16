@@ -1,12 +1,12 @@
 //! The fan-out families, as a type rather than a string.
 //!
-//! Every family question — which Store directory, what shape its entries are,
+//! Every family question — which Commons directory, what shape its entries are,
 //! which registry column to read — is answered here, so adding a family is one
 //! variant and the compiler finds the rest.
 
 use std::fmt;
 
-/// What a family's Store entries look like on disk.
+/// What a family's Commons entries look like on disk.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Shape {
     /// One directory per entry.
@@ -27,7 +27,7 @@ impl Family {
     /// Every fan-out family, in report order.
     pub const ALL: &'static [Family] = &[Family::Skills, Family::Commands, Family::Subagents];
 
-    /// The Store directory, and the name used in config and reports.
+    /// The Commons directory, and the name used in config and reports.
     pub fn name(&self) -> &'static str {
         match self {
             Family::Skills => "skills",

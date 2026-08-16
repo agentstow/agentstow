@@ -61,7 +61,7 @@ fn the_report_offers_the_mcp_adoption_command() {
 #[test]
 fn the_report_names_a_conflict_and_its_remedy() {
     let f = populated();
-    f.store_file("AGENTS.md", "# shared\n");
+    f.commons_file("AGENTS.md", "# shared\n");
     // Another tool already owns opencode's instructions file.
     f.file(".config/opencode/AGENTS.md", "<claude-mem-context>\n");
 
@@ -88,16 +88,16 @@ fn the_report_uses_the_projects_vocabulary() {
 
     let out = f.run(&["init"]);
 
-    out.assert_clean().assert_stdout_has("Store");
+    out.assert_clean().assert_stdout_has("Commons");
 }
 
 #[test]
-fn init_still_creates_only_the_store() {
+fn init_still_creates_only_the_commons() {
     let f = populated();
 
     f.run(&["init"]).assert_clean();
 
-    assert!(f.store().join("skills").is_dir());
+    assert!(f.commons().join("skills").is_dir());
     for agent in agentstow::registry::AGENTS {
         let root = f.path(agent.root);
         if !["claude", "codex", "opencode"].contains(&agent.name) {
@@ -106,7 +106,7 @@ fn init_still_creates_only_the_store() {
     }
     // Nothing was adopted, only reported.
     assert!(f.is_real_dir(".claude/skills/local-thing"));
-    assert!(!f.store().join("skills/local-thing").exists());
+    assert!(!f.commons().join("skills/local-thing").exists());
 }
 
 #[test]

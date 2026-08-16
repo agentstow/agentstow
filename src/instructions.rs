@@ -1,4 +1,4 @@
-//! The instructions family: one `AGENTS.md` in the Store, reaching every agent
+//! The instructions family: one `AGENTS.md` in the Commons, reaching every agent
 //! by whichever mechanism that agent supports.
 //!
 //! Three mechanisms, because agents differ in kind and not just in path:
@@ -26,13 +26,13 @@ pub enum State {
     Linked,
     /// Nothing there yet — a link will be created.
     Missing,
-    /// The user's file already imports the Store instructions.
+    /// The user's file already imports the Commons instructions.
     ImportPresent,
     /// The user's file exists (or does not) and needs the import line added.
     ImportMissing,
     /// A file we did not write occupies the destination.
     Conflict,
-    /// A symlink pointing somewhere other than the Store.
+    /// A symlink pointing somewhere other than the Commons.
     Foreign,
 }
 
@@ -95,8 +95,8 @@ impl Item {
     pub fn note(&self) -> String {
         match self.state {
             State::Linked => String::new(),
-            State::Missing => "will be linked to the Store".into(),
-            State::ImportPresent => "imports the Store instructions".into(),
+            State::Missing => "will be linked to the Commons".into(),
+            State::ImportPresent => "imports the Commons instructions".into(),
             State::ImportMissing => "the import line will be added".into(),
             State::Conflict => match &self.occupant {
                 Some(tool) => format!(
@@ -108,17 +108,17 @@ impl Item {
                     self.path.display()
                 ),
             },
-            State::Foreign => "points outside the Store — left alone".into(),
+            State::Foreign => "points outside the Commons — left alone".into(),
         }
     }
 }
 
 /// Survey every detected Target's instructions destination.
 ///
-/// Returns nothing at all when the Store has no `AGENTS.md`: an absent family
+/// Returns nothing at all when the Commons has no `AGENTS.md`: an absent family
 /// is not a problem to report, it is simply a family the user does not use.
-pub fn survey(env: &Env, config: &Config, store_file: &Path) -> Vec<Item> {
-    if !store_file.is_file() {
+pub fn survey(env: &Env, config: &Config, commons_file: &Path) -> Vec<Item> {
+    if !commons_file.is_file() {
         return Vec::new();
     }
 
@@ -131,10 +131,10 @@ pub fn survey(env: &Env, config: &Config, store_file: &Path) -> Vec<Item> {
         };
 
         let item = match agent.instructions {
-            Instructions::Symlink(rel) => link_item(&target.name, env.in_home(rel), store_file),
+            Instructions::Symlink(rel) => link_item(&target.name, env.in_home(rel), commons_file),
             Instructions::RulesDirLink(dir) => {
                 let path = env.in_home(dir).join("AGENTS.md");
-                link_item(&target.name, path, store_file)
+                link_item(&target.name, path, commons_file)
             }
             Instructions::ImportLine(rel) => import_item(&target.name, env.in_home(rel), env),
             Instructions::None => continue,
@@ -145,16 +145,16 @@ pub fn survey(env: &Env, config: &Config, store_file: &Path) -> Vec<Item> {
     items
 }
 
-fn link_item(target: &str, path: PathBuf, store_file: &Path) -> Item {
+fn link_item(target: &str, path: PathBuf, commons_file: &Path) -> Item {
     let parent = path.parent().unwrap_or(Path::new("."));
-    let text = link::relative_from(parent, store_file);
+    let text = link::relative_from(parent, commons_file);
 
     let state = match fs::symlink_metadata(&path) {
         Err(_) => State::Missing,
         Ok(meta) if meta.file_type().is_symlink() => {
             let actual = fs::read_link(&path).unwrap_or_default();
             let resolved = link::resolve_link(&path, &actual);
-            if resolved == link::normalize(store_file) {
+            if resolved == link::normalize(commons_file) {
                 State::Linked
             } else {
                 State::Foreign
@@ -213,10 +213,10 @@ fn import_item(target: &str, path: PathBuf, env: &Env) -> Item {
     }
 }
 
-/// How the Store instructions should be referred to inside a user's file:
-/// `~`-relative when the Store is under the home directory, absolute otherwise.
+/// How the Commons instructions should be referred to inside a user's file:
+/// `~`-relative when the Commons is under the home directory, absolute otherwise.
 fn import_reference(env: &Env) -> String {
-    let file = env.store().join(crate::store::INSTRUCTIONS);
+    let file = env.commons().join(crate::commons::INSTRUCTIONS);
     match file.strip_prefix(env.home()) {
         Ok(rel) => format!("~/{}", rel.display()),
         Err(_) => file.display().to_string(),

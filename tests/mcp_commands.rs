@@ -13,7 +13,7 @@ fn machine() -> Fixture {
 }
 
 fn one_server(f: &Fixture) {
-    f.store_mcp(r#"{"mcpServers": {"serena": {"type": "stdio", "command": "uvx"}}}"#);
+    f.commons_mcp(r#"{"mcpServers": {"serena": {"type": "stdio", "command": "uvx"}}}"#);
 }
 
 fn config(f: &Fixture, body: &str) {
@@ -123,17 +123,17 @@ fn a_tweak_can_override_a_rendered_key() {
 }
 
 #[test]
-fn tweaks_never_pollute_the_store() {
+fn tweaks_never_pollute_the_commons() {
     let f = machine();
     one_server(&f);
     config(&f, "[mcp.serena.tweaks.codex]\nstartup_timeout_sec = 20\n");
 
     f.run(&["sync"]).assert_clean();
 
-    let store = f.contents_of_store("mcp.json");
+    let commons = f.contents_of_commons("mcp.json");
     assert!(
-        !store.contains("startup_timeout_sec"),
-        "the Store holds the standard shape only:\n{store}"
+        !commons.contains("startup_timeout_sec"),
+        "the Commons holds the standard shape only:\n{commons}"
     );
 }
 
@@ -164,7 +164,7 @@ fn a_tweaked_server_still_converges() {
 // ------------------------------------------------------------------ mcp list
 
 #[test]
-fn list_shows_store_servers_and_their_per_target_state() {
+fn list_shows_commons_servers_and_their_per_target_state() {
     let f = machine();
     one_server(&f);
     f.file(
@@ -204,7 +204,7 @@ fn list_is_available_as_json() {
 }
 
 #[test]
-fn list_without_a_store_file_says_so_rather_than_failing() {
+fn list_without_a_commons_file_says_so_rather_than_failing() {
     let f = machine();
 
     f.run(&["mcp", "list"])
@@ -215,7 +215,7 @@ fn list_without_a_store_file_says_so_rather_than_failing() {
 // ---------------------------------------------------------------- mcp remove
 
 #[test]
-fn remove_deletes_the_server_from_the_store_and_every_target() {
+fn remove_deletes_the_server_from_the_commons_and_every_target() {
     let f = machine();
     one_server(&f);
     f.run(&["sync"]).assert_clean();
@@ -224,8 +224,8 @@ fn remove_deletes_the_server_from_the_store_and_every_target() {
 
     out.assert_clean().assert_stdout_has("serena");
     assert!(
-        !f.contents_of_store("mcp.json").contains("serena"),
-        "gone from the Store"
+        !f.contents_of_commons("mcp.json").contains("serena"),
+        "gone from the Commons"
     );
     assert!(f.json(".claude.json")["mcpServers"].get("serena").is_none());
     assert!(!f.contents(".codex/config.toml").contains("serena"));
@@ -256,7 +256,7 @@ fn remove_leaves_foreign_servers_and_other_keys_alone() {
 #[test]
 fn remove_preserves_the_order_of_the_remaining_keys() {
     let f = machine();
-    f.store_mcp(r#"{"mcpServers": {"b": {"command": "x"}}}"#);
+    f.commons_mcp(r#"{"mcpServers": {"b": {"command": "x"}}}"#);
     f.file(
         ".claude.json",
         r#"{"mcpServers": {"a": {"command": "1"}, "b": {"command": "2"}, "c": {"command": "3"}, "d": {"command": "4"}}}"#,
@@ -275,7 +275,7 @@ fn remove_preserves_the_order_of_the_remaining_keys() {
 }
 
 #[test]
-fn removing_a_server_that_is_not_in_the_store_is_an_error() {
+fn removing_a_server_that_is_not_in_the_commons_is_an_error() {
     let f = machine();
     one_server(&f);
 
@@ -299,7 +299,7 @@ fn a_removed_server_stays_removed_after_a_sync() {
 // ----------------------------------------------------------------- mcp adopt
 
 #[test]
-fn adopt_takes_a_native_claude_entry_into_the_store() {
+fn adopt_takes_a_native_claude_entry_into_the_commons() {
     let f = machine();
     f.file(
         ".claude.json",
@@ -309,9 +309,10 @@ fn adopt_takes_a_native_claude_entry_into_the_store() {
     let out = f.run(&["mcp", "adopt", "claude/handmade"]);
 
     out.assert_clean().assert_stdout_has("handmade");
-    let store: serde_json::Value = serde_json::from_str(&f.contents_of_store("mcp.json")).unwrap();
-    assert_eq!(store["mcpServers"]["handmade"]["command"], "mine");
-    assert_eq!(store["mcpServers"]["handmade"]["args"][0], "-x");
+    let commons: serde_json::Value =
+        serde_json::from_str(&f.contents_of_commons("mcp.json")).unwrap();
+    assert_eq!(commons["mcpServers"]["handmade"]["command"], "mine");
+    assert_eq!(commons["mcpServers"]["handmade"]["args"][0], "-x");
 }
 
 #[test]
@@ -345,13 +346,14 @@ fn adopting_from_codex_recovers_the_canonical_shape_and_tweaks() {
     let out = f.run(&["mcp", "adopt", "codex/native"]);
 
     out.assert_clean();
-    let store: serde_json::Value = serde_json::from_str(&f.contents_of_store("mcp.json")).unwrap();
-    assert_eq!(store["mcpServers"]["native"]["command"], "c");
+    let commons: serde_json::Value =
+        serde_json::from_str(&f.contents_of_commons("mcp.json")).unwrap();
+    assert_eq!(commons["mcpServers"]["native"]["command"], "c");
     assert!(
-        store["mcpServers"]["native"]
+        commons["mcpServers"]["native"]
             .get("startup_timeout_sec")
             .is_none(),
-        "a Codex-only knob does not belong in the pure Store shape"
+        "a Codex-only knob does not belong in the pure Commons shape"
     );
     let config = f.contents(".agentstow/agentstow.toml");
     assert!(
@@ -396,9 +398,9 @@ fn adoption_reports_what_it_could_not_represent() {
 }
 
 #[test]
-fn adopting_a_server_the_store_already_has_identically_is_a_no_op() {
+fn adopting_a_server_the_commons_already_has_identically_is_a_no_op() {
     let f = machine();
-    f.store_mcp(r#"{"mcpServers": {"serena": {"type": "stdio", "command": "uvx"}}}"#);
+    f.commons_mcp(r#"{"mcpServers": {"serena": {"type": "stdio", "command": "uvx"}}}"#);
     f.run(&["sync"]).assert_clean();
 
     f.run(&["mcp", "adopt", "claude/serena"])
@@ -407,19 +409,19 @@ fn adopting_a_server_the_store_already_has_identically_is_a_no_op() {
 }
 
 #[test]
-fn adopting_a_server_that_differs_from_the_store_is_refused() {
+fn adopting_a_server_that_differs_from_the_commons_is_refused() {
     let f = machine();
     one_server(&f);
     f.file(
         ".claude.json",
         r#"{"mcpServers": {"serena": {"type": "stdio", "command": "tampered"}}}"#,
     );
-    let before = f.contents_of_store("mcp.json");
+    let before = f.contents_of_commons("mcp.json");
 
     let out = f.run(&["mcp", "adopt", "claude/serena"]);
 
     out.assert_code(1).assert_stderr_has("differs");
-    assert_eq!(before, f.contents_of_store("mcp.json"));
+    assert_eq!(before, f.contents_of_commons("mcp.json"));
 }
 
 #[test]
@@ -448,9 +450,10 @@ fn adopt_all_takes_every_foreign_server_it_finds() {
 
     f.run(&["mcp", "adopt", "--all"]).assert_clean();
 
-    let store: serde_json::Value = serde_json::from_str(&f.contents_of_store("mcp.json")).unwrap();
-    assert_eq!(store["mcpServers"]["one"]["command"], "a");
-    assert_eq!(store["mcpServers"]["two"]["command"], "b");
+    let commons: serde_json::Value =
+        serde_json::from_str(&f.contents_of_commons("mcp.json")).unwrap();
+    assert_eq!(commons["mcpServers"]["one"]["command"], "a");
+    assert_eq!(commons["mcpServers"]["two"]["command"], "b");
 }
 
 #[test]
@@ -481,7 +484,7 @@ fn a_tweak_toml_cannot_hold_aborts_the_adoption() {
 
     out.assert_code(1);
     assert!(
-        !f.store().join("mcp.json").exists(),
+        !f.commons().join("mcp.json").exists(),
         "a Tweak that cannot be stored must not be silently dropped"
     );
 }
@@ -529,12 +532,12 @@ fn an_adoption_that_would_not_survive_a_sync_is_refused() {
         f.run(&["sync"]).assert_clean();
         assert_eq!(before, f.contents(".config/opencode/opencode.json"));
     } else {
-        assert!(!f.store().join("mcp.json").exists());
+        assert!(!f.commons().join("mcp.json").exists());
     }
 }
 
 #[test]
-fn a_literal_credential_taken_into_the_store_is_called_out() {
+fn a_literal_credential_taken_into_the_commons_is_called_out() {
     let f = machine();
     f.file(
         ".claude.json",

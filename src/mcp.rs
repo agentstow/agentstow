@@ -1,14 +1,14 @@
 //! MCP servers — the Rendered family (ADR-0002).
 //!
-//! One Store file, `~/.agents/mcp.json`, in the de-facto standard `mcpServers`
+//! One Commons file, `~/.agents/mcp.json`, in the de-facto standard `mcpServers`
 //! shape and kept pure, is rendered into each agent's native config and merged
-//! under **name identity**: a server name present in the Store is Managed and
-//! the Store wins; any other name is Foreign and never touched, along with
+//! under **name identity**: a server name present in the Commons is Managed and
+//! the Commons wins; any other name is Foreign and never touched, along with
 //! every other key in what is usually a large file the agent owns.
 //!
 //! Two consequences of having no state file (ADR-0001) are load-bearing here:
 //!
-//! * `sync` never *deletes* a server. A name that has gone from the Store is
+//! * `sync` never *deletes* a server. A name that has gone from the Commons is
 //!   indistinguishable from one a user added by hand, so removal is an explicit
 //!   act (`mcp remove`), not something inferred.
 //! * Resolved `${env:VAR}` values never reach the [`Reporter`]. Notes name the
@@ -28,18 +28,18 @@ use crate::target;
 /// The state of one server name in one agent's config.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum State {
-    /// Managed and already exactly what the Store renders.
+    /// Managed and already exactly what the Commons renders.
     Managed,
-    /// In the Store, absent from this agent's config.
+    /// In the Commons, absent from this agent's config.
     Missing,
-    /// In both, but the agent's copy differs — the Store wins.
+    /// In both, but the agent's copy differs — the Commons wins.
     Drifted,
     /// Only in the agent's config. Not ours; never touched.
     Foreign,
-    /// In the Store, but this agent is not on the server's allowlist, and it is
+    /// In the Commons, but this agent is not on the server's allowlist, and it is
     /// not in the agent's config either. Nothing to do.
     Excluded,
-    /// In the Store and in this agent's config, but no longer allowlisted for
+    /// In the Commons and in this agent's config, but no longer allowlisted for
     /// it. Reported so a narrowed allowlist does not leave leftovers unnoticed.
     Stranded,
 }
@@ -82,7 +82,7 @@ pub struct Item {
     /// Wire format of that file.
     pub format: Format,
     pub state: State,
-    /// What the Store says this entry should be — resolved, never printed.
+    /// What the Commons says this entry should be — resolved, never printed.
     rendered: Option<Value>,
     /// Names of the keys that differ. Key names only, never values.
     changed_keys: Vec<String>,
@@ -107,15 +107,15 @@ impl Item {
             State::Missing => "not in this agent's config yet".into(),
             State::Drifted => {
                 if self.changed_keys.is_empty() {
-                    "differs from the Store — will be restored".into()
+                    "differs from the Commons — will be restored".into()
                 } else {
                     format!(
-                        "differs from the Store ({}) — will be restored",
+                        "differs from the Commons ({}) — will be restored",
                         self.changed_keys.join(", ")
                     )
                 }
             }
-            State::Foreign => "not in the Store — left alone".into(),
+            State::Foreign => "not in the Commons — left alone".into(),
             State::Excluded => "not allowlisted for this agent".into(),
             State::Stranded => {
                 "still here but no longer allowlisted — `agentstow mcp remove` clears it".into()
@@ -136,18 +136,18 @@ impl std::fmt::Display for Error {
     }
 }
 
-/// Survey every MCP-capable Target against the Store.
+/// Survey every MCP-capable Target against the Commons.
 ///
-/// An absent Store file yields nothing: a family the user does not use is not a
-/// problem to report. Any failure — unparseable Store file, unparseable agent
+/// An absent Commons file yields nothing: a family the user does not use is not a
+/// problem to report. Any failure — unparseable Commons file, unparseable agent
 /// config, an unset `${env:VAR}` — is returned as an error so that *no* file is
 /// written, rather than some agents being updated and others not.
-pub fn survey(env: &Env, config: &Config, store_file: &Path) -> Result<Survey, Error> {
-    if !store_file.is_file() {
+pub fn survey(env: &Env, config: &Config, commons_file: &Path) -> Result<Survey, Error> {
+    if !commons_file.is_file() {
         return Ok(Survey::default());
     }
 
-    let servers = read_store(store_file)?;
+    let servers = read_commons(commons_file)?;
     let mut survey = Survey::default();
 
     for target in target::resolve(env, config) {
@@ -243,7 +243,7 @@ pub fn survey(env: &Env, config: &Config, store_file: &Path) -> Result<Survey, E
     Ok(survey)
 }
 
-/// Whether a Store entry references the environment, and so renders to a value
+/// Whether a Commons entry references the environment, and so renders to a value
 /// worth keeping out of a readable file.
 fn mentions_env_ref(spec: &Value) -> bool {
     serde_json::to_string(spec)
@@ -350,7 +350,7 @@ fn render_json_document(path: &Path, root_key: &str, items: &[&Item]) -> Result<
         let Some(rendered) = &item.rendered else {
             continue;
         };
-        // Replace the whole subtree: a key the Store dropped must disappear,
+        // Replace the whole subtree: a key the Commons dropped must disappear,
         // which a deep merge would preserve forever.
         servers.insert(item.name.clone(), rendered.clone());
     }
@@ -371,13 +371,13 @@ pub struct Report {
     pub mode: u32,
 }
 
-/// The Store's servers, keyed by name.
+/// The Commons' servers, keyed by name.
 ///
 /// One shape only, the de-facto standard `{"mcpServers": {...}}`. Falling back
 /// to "treat every top-level key as a server" would quietly turn a `$schema`
 /// line into a server named `$schema`, and would silently ignore real servers
 /// in a file that merely had a typo in the wrapper.
-fn read_store(path: &Path) -> Result<BTreeMap<String, Value>, Error> {
+fn read_commons(path: &Path) -> Result<BTreeMap<String, Value>, Error> {
     let text = std::fs::read_to_string(path).map_err(|e| Error {
         message: format!("cannot read {}: {e}", path.display()),
     })?;
@@ -427,7 +427,7 @@ fn read_existing(path: &Path, root_key: &str, format: Format) -> Result<Map<Stri
         Format::Json => match read_agent_config(path)?.get(root_key) {
             None => Ok(Map::new()),
             Some(Value::Object(servers)) => Ok(servers.clone()),
-            // Treating this as "no servers" would report every Store server as
+            // Treating this as "no servers" would report every Commons server as
             // missing forever, while the write refuses every time.
             Some(_) => Err(Error {
                 message: format!(
@@ -477,7 +477,7 @@ fn read_agent_config(path: &Path) -> Result<Value, Error> {
     }
 }
 
-/// How a server talks, whether or not the Store said so outright.
+/// How a server talks, whether or not the Commons said so outright.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Transport {
     Stdio,
@@ -501,7 +501,7 @@ fn transport(spec: &Map<String, Value>) -> Transport {
 const TRANSLATED: &[&str] = &["type", "command", "args", "env", "url", "headers"];
 
 /// Copy the keys agentstow does not model, so an agent-specific setting the
-/// user wrote in the Store still reaches its agent.
+/// user wrote in the Commons still reaches its agent.
 fn passthrough(spec: &Map<String, Value>, out: &mut Map<String, Value>) {
     for (key, value) in spec {
         if !TRANSLATED.contains(&key.as_str()) {
@@ -510,7 +510,7 @@ fn passthrough(spec: &Map<String, Value>, out: &mut Map<String, Value>) {
     }
 }
 
-/// Render one Store server into an agent's native shape, resolving references.
+/// Render one Commons server into an agent's native shape, resolving references.
 fn render(
     name: &str,
     spec: &Value,
@@ -582,7 +582,7 @@ fn render_dialect(
         return Ok(resolved);
     };
     Ok(Value::Object(match dialect {
-        // The Store is already in this shape, so there is nothing to translate.
+        // The Commons is already in this shape, so there is nothing to translate.
         McpDialect::Standard => return Ok(resolved),
         McpDialect::Codex => {
             // The TOML merge drops null-valued keys because TOML has no null.
@@ -797,7 +797,7 @@ fn differing_keys(current: Option<&Value>, rendered: &Value) -> Vec<String> {
 /// `canonical` and `tweaks` hold values read out of an agent's config, which
 /// may be secrets the user put there by hand.
 pub struct Absorbed {
-    /// The entry as it will be written to the Store, in the standard shape.
+    /// The entry as it will be written to the Commons, in the standard shape.
     pub canonical: Value,
     /// Native keys with no canonical home, kept for the source agent alone.
     pub tweaks: Map<String, Value>,
@@ -1033,23 +1033,23 @@ pub fn strip(
     }))
 }
 
-/// Read the Store's servers, or an empty map if there is no Store file yet.
-pub fn store_servers(store_file: &Path) -> Result<Map<String, Value>, Error> {
-    if !store_file.is_file() {
+/// Read the Commons' servers, or an empty map if there is no Commons file yet.
+pub fn commons_servers(commons_file: &Path) -> Result<Map<String, Value>, Error> {
+    if !commons_file.is_file() {
         return Ok(Map::new());
     }
-    Ok(read_store(store_file)?.into_iter().collect())
+    Ok(read_commons(commons_file)?.into_iter().collect())
 }
 
-/// Write the Store's servers back, in the standard shape.
-pub fn store_write(store_file: &Path, servers: &Map<String, Value>) -> Result<(), Error> {
+/// Write the Commons' servers back, in the standard shape.
+pub fn commons_write(commons_file: &Path, servers: &Map<String, Value>) -> Result<(), Error> {
     let mut document = Map::new();
     document.insert("mcpServers".into(), Value::Object(servers.clone()));
     let body = serde_json::to_string_pretty(&Value::Object(document)).map_err(|e| Error {
-        message: format!("cannot serialise {}: {e}", store_file.display()),
+        message: format!("cannot serialise {}: {e}", commons_file.display()),
     })?;
-    crate::write::atomic(store_file, format!("{body}\n").as_bytes()).map_err(|e| Error {
-        message: format!("cannot write {}: {e}", store_file.display()),
+    crate::write::atomic(commons_file, format!("{body}\n").as_bytes()).map_err(|e| Error {
+        message: format!("cannot write {}: {e}", commons_file.display()),
     })?;
     Ok(())
 }

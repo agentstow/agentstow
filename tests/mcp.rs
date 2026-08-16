@@ -1,4 +1,4 @@
-//! MCP servers — the first Rendered family. One Store file in the standard
+//! MCP servers — the first Rendered family. One Commons file in the standard
 //! shape, key-merged into each agent's native config under name identity.
 
 mod common;
@@ -28,9 +28,9 @@ fn one_server() -> &'static str {
 }
 
 #[test]
-fn a_store_server_reaches_the_agents_config() {
+fn a_commons_server_reaches_the_agents_config() {
     let f = machine();
-    f.store_mcp(one_server());
+    f.commons_mcp(one_server());
 
     f.run(&["sync"]).assert_clean();
 
@@ -46,7 +46,7 @@ fn a_store_server_reaches_the_agents_config() {
 #[test]
 fn a_new_config_file_is_created_private() {
     let f = machine();
-    f.store_mcp(one_server());
+    f.commons_mcp(one_server());
 
     f.run(&["sync"]).assert_clean();
 
@@ -60,7 +60,7 @@ fn a_new_config_file_is_created_private() {
 #[test]
 fn everything_else_in_the_config_survives() {
     let f = machine();
-    f.store_mcp(one_server());
+    f.commons_mcp(one_server());
     f.file(
         ".claude.json",
         r#"{
@@ -91,7 +91,7 @@ fn everything_else_in_the_config_survives() {
 #[test]
 fn the_order_of_someone_elses_keys_is_preserved() {
     let f = machine();
-    f.store_mcp(one_server());
+    f.commons_mcp(one_server());
     f.file(
         ".claude.json",
         r#"{"zebra": 1, "apple": 2, "middle": 3, "mcpServers": {}}"#,
@@ -112,7 +112,7 @@ fn the_order_of_someone_elses_keys_is_preserved() {
 #[test]
 fn a_foreign_server_is_never_touched() {
     let f = machine();
-    f.store_mcp(one_server());
+    f.commons_mcp(one_server());
     f.file(
         ".claude.json",
         r#"{"mcpServers": {"handmade": {"command": "mine", "args": ["--keep"]}}}"#,
@@ -129,7 +129,7 @@ fn a_foreign_server_is_never_touched() {
 #[test]
 fn a_foreign_server_is_reported_but_needs_no_action() {
     let f = machine();
-    f.store_mcp(one_server());
+    f.commons_mcp(one_server());
     f.file(
         ".claude.json",
         r#"{"mcpServers": {"handmade": {"command": "mine"}}}"#,
@@ -145,7 +145,7 @@ fn a_foreign_server_is_reported_but_needs_no_action() {
 #[test]
 fn a_hand_edited_managed_entry_is_restored() {
     let f = machine();
-    f.store_mcp(one_server());
+    f.commons_mcp(one_server());
     f.run(&["sync"]).assert_clean();
     f.file(
         ".claude.json",
@@ -158,14 +158,14 @@ fn a_hand_edited_managed_entry_is_restored() {
     assert_eq!(
         f.json(".claude.json")["mcpServers"]["serena"]["command"],
         "uvx",
-        "the Store wins for a Managed entry"
+        "the Commons wins for a Managed entry"
     );
 }
 
 #[test]
 fn restoring_a_managed_entry_says_which_keys_changed() {
     let f = machine();
-    f.store_mcp(one_server());
+    f.commons_mcp(one_server());
     f.run(&["sync"]).assert_clean();
     f.file(
         ".claude.json",
@@ -179,9 +179,9 @@ fn restoring_a_managed_entry_says_which_keys_changed() {
 }
 
 #[test]
-fn a_stale_key_disappears_when_the_store_no_longer_has_it() {
+fn a_stale_key_disappears_when_the_commons_no_longer_has_it() {
     let f = machine();
-    f.store_mcp(one_server());
+    f.commons_mcp(one_server());
     f.file(
         ".claude.json",
         r#"{"mcpServers": {"serena": {"command": "uvx", "type": "stdio", "leftover": "gone"}}}"#,
@@ -200,7 +200,7 @@ fn a_stale_key_disappears_when_the_store_no_longer_has_it() {
 #[test]
 fn drift_is_actionable_and_a_synced_machine_is_clean() {
     let f = machine();
-    f.store_mcp(one_server());
+    f.commons_mcp(one_server());
 
     f.run(&["status"])
         .assert_code(2)
@@ -214,7 +214,7 @@ fn drift_is_actionable_and_a_synced_machine_is_clean() {
 #[test]
 fn a_second_sync_changes_nothing_at_all() {
     let f = machine();
-    f.store_mcp(one_server());
+    f.commons_mcp(one_server());
     f.run(&["sync"]).assert_clean();
     let after_first = f.contents(".claude.json");
 
@@ -231,7 +231,7 @@ fn a_second_sync_changes_nothing_at_all() {
 #[test]
 fn env_references_resolve_at_sync() {
     let f = machine();
-    f.store_mcp(
+    f.commons_mcp(
         r#"{"mcpServers": {"api": {"type": "http", "url": "https://example.test",
              "headers": {"Authorization": "Bearer ${env:TOKEN}"}}}}"#,
     );
@@ -248,7 +248,7 @@ fn env_references_resolve_at_sync() {
 #[test]
 fn an_unset_variable_is_a_clear_error_and_nothing_is_written() {
     let f = machine();
-    f.store_mcp(
+    f.commons_mcp(
         r#"{"mcpServers": {"api": {"command": "x", "env": {"KEY": "${env:MISSING_TOKEN}"}}}}"#,
     );
 
@@ -264,7 +264,7 @@ fn an_unset_variable_is_a_clear_error_and_nothing_is_written() {
 #[test]
 fn a_resolved_secret_never_appears_in_any_output() {
     let f = machine();
-    f.store_mcp(r#"{"mcpServers": {"api": {"command": "x", "env": {"KEY": "${env:TOKEN}"}}}}"#);
+    f.commons_mcp(r#"{"mcpServers": {"api": {"command": "x", "env": {"KEY": "${env:TOKEN}"}}}}"#);
 
     for args in [
         vec!["status"],
@@ -293,7 +293,7 @@ fn a_resolved_secret_never_appears_in_any_output() {
 #[test]
 fn a_secret_that_drifted_is_not_printed_when_restored() {
     let f = machine();
-    f.store_mcp(r#"{"mcpServers": {"api": {"command": "x", "env": {"KEY": "${env:TOKEN}"}}}}"#);
+    f.commons_mcp(r#"{"mcpServers": {"api": {"command": "x", "env": {"KEY": "${env:TOKEN}"}}}}"#);
     f.run_with_env(&["sync"], &[("TOKEN", CANARY)])
         .assert_clean();
     f.file(
@@ -310,7 +310,7 @@ fn a_secret_that_drifted_is_not_printed_when_restored() {
 #[test]
 fn a_symlinked_config_keeps_its_symlink() {
     let f = machine();
-    f.store_mcp(one_server());
+    f.commons_mcp(one_server());
     // A dotfiles manager owns the real file elsewhere.
     let real = f.root().join("dotfiles").join("claude.json");
     std::fs::create_dir_all(real.parent().unwrap()).unwrap();
@@ -335,7 +335,7 @@ fn agents_without_an_mcp_surface_never_get_a_config() {
     f.agent(".pi");
     f.agent(".omp");
     f.agent(".roo");
-    f.store_mcp(one_server());
+    f.commons_mcp(one_server());
 
     f.run(&["sync"]).assert_clean();
 
@@ -347,9 +347,9 @@ fn agents_without_an_mcp_surface_never_get_a_config() {
 }
 
 #[test]
-fn no_store_file_means_no_mcp_work() {
+fn no_commons_file_means_no_mcp_work() {
     let f = machine();
-    f.store_skill("research");
+    f.commons_skill("research");
     let before = f.tree();
 
     f.run(&["sync"]).assert_clean();
@@ -359,9 +359,9 @@ fn no_store_file_means_no_mcp_work() {
 }
 
 #[test]
-fn a_malformed_store_file_is_refused_before_anything_is_written() {
+fn a_malformed_commons_file_is_refused_before_anything_is_written() {
     let f = machine();
-    f.store_mcp("{ this is not json");
+    f.commons_mcp("{ this is not json");
 
     let out = f.run(&["sync"]);
 
@@ -372,7 +372,7 @@ fn a_malformed_store_file_is_refused_before_anything_is_written() {
 #[test]
 fn a_malformed_agent_config_is_reported_not_overwritten() {
     let f = machine();
-    f.store_mcp(one_server());
+    f.commons_mcp(one_server());
     f.file(".claude.json", "{ not json at all");
 
     let out = f.run(&["sync"]);
@@ -392,7 +392,7 @@ fn a_malformed_agent_config_is_reported_not_overwritten() {
 #[test]
 fn dry_run_writes_nothing() {
     let f = machine();
-    f.store_mcp(one_server());
+    f.commons_mcp(one_server());
     let before = f.tree();
 
     f.run(&["sync", "--dry-run"])
@@ -406,7 +406,7 @@ fn dry_run_writes_nothing() {
 #[test]
 fn no_temporary_files_are_left_behind() {
     let f = machine();
-    f.store_mcp(one_server());
+    f.commons_mcp(one_server());
 
     f.run(&["sync"]).assert_clean();
 
@@ -421,7 +421,7 @@ fn no_temporary_files_are_left_behind() {
 #[test]
 fn awkward_characters_in_values_survive() {
     let f = machine();
-    f.store_mcp(
+    f.commons_mcp(
         r#"{"mcpServers": {"odd": {"command": "x",
              "env": {"QUOTES": "a\"b", "SLASH": "a\\b", "UNICODE": "héllo→世界"}}}}"#,
     );
@@ -437,7 +437,7 @@ fn awkward_characters_in_values_survive() {
 #[test]
 fn status_reports_mcp_in_json() {
     let f = machine();
-    f.store_mcp(one_server());
+    f.commons_mcp(one_server());
     f.file(
         ".claude.json",
         r#"{"mcpServers": {"handmade": {"command": "mine"}}}"#,
@@ -451,7 +451,7 @@ fn status_reports_mcp_in_json() {
     let serena = entries
         .iter()
         .find(|e| e["name"] == "serena")
-        .expect("the Store server");
+        .expect("the Commons server");
     assert_eq!(serena["state"], "missing");
     let handmade = entries.iter().find(|e| e["name"] == "handmade").unwrap();
     assert_eq!(handmade["state"], "foreign");
@@ -461,7 +461,7 @@ fn status_reports_mcp_in_json() {
 #[test]
 fn a_held_lock_stops_the_write() {
     let f = machine();
-    f.store_mcp(one_server());
+    f.commons_mcp(one_server());
     let _held = common::hold_lock(f.path(".agentstow/lock"));
 
     let out = f.run_with_env(&["sync"], &[("AGENTSTOW_LOCK_TIMEOUT_MS", "150")]);
@@ -476,7 +476,7 @@ fn a_toml_agent_is_merged_without_losing_the_users_settings() {
     // standard JSON shape here would corrupt it, so it gets a TOML merge.
     let f = machine();
     f.agent(".codex");
-    f.store_mcp(one_server());
+    f.commons_mcp(one_server());
     f.file(".codex/config.toml", "model = \"gpt-5\"\n");
 
     let out = f.run(&["sync"]);
@@ -499,7 +499,7 @@ fn a_toml_agent_is_merged_without_losing_the_users_settings() {
 fn a_fresh_codex_never_receives_a_json_document() {
     let f = machine();
     f.agent(".codex");
-    f.store_mcp(one_server());
+    f.commons_mcp(one_server());
 
     f.run(&["sync"]).assert_clean();
 
@@ -519,7 +519,7 @@ fn a_fresh_codex_never_receives_a_json_document() {
 fn one_broken_config_does_not_deny_service_to_the_others() {
     let f = machine();
     f.agent(".cursor");
-    f.store_mcp(one_server());
+    f.commons_mcp(one_server());
     f.file(".cursor/mcp.json", "not json at all");
 
     let out = f.run(&["sync"]);
@@ -538,8 +538,8 @@ fn one_broken_config_does_not_deny_service_to_the_others() {
 fn a_broken_config_never_blanks_out_the_status_report() {
     let f = machine();
     f.agent(".cursor");
-    f.store_mcp(one_server());
-    f.store_skill("research");
+    f.commons_mcp(one_server());
+    f.commons_skill("research");
     f.file(".cursor/mcp.json", "not json at all");
 
     let out = f.run(&["status"]);
@@ -554,7 +554,7 @@ fn a_broken_config_never_blanks_out_the_status_report() {
 #[test]
 fn a_document_that_is_not_an_object_is_never_replaced() {
     let f = machine();
-    f.store_mcp(one_server());
+    f.commons_mcp(one_server());
     f.file(".claude.json", "[1, 2, 3]");
 
     let out = f.run(&["sync"]);
@@ -570,7 +570,7 @@ fn a_document_that_is_not_an_object_is_never_replaced() {
 #[test]
 fn a_non_object_server_map_is_reported_not_overwritten() {
     let f = machine();
-    f.store_mcp(one_server());
+    f.commons_mcp(one_server());
     f.file(".claude.json", r#"{"mcpServers": "unexpected", "keep": 1}"#);
 
     let out = f.run(&["sync"]);
@@ -582,7 +582,7 @@ fn a_non_object_server_map_is_reported_not_overwritten() {
 #[test]
 fn secrets_landing_in_a_readable_file_are_called_out() {
     let f = machine();
-    f.store_mcp(r#"{"mcpServers": {"api": {"command": "x", "env": {"K": "${env:TOKEN}"}}}}"#);
+    f.commons_mcp(r#"{"mcpServers": {"api": {"command": "x", "env": {"K": "${env:TOKEN}"}}}}"#);
     f.file(".claude.json", "{}");
     let readable = std::fs::Permissions::from_mode(0o644);
     std::fs::set_permissions(f.path(".claude.json"), readable).unwrap();
@@ -597,7 +597,7 @@ fn secrets_landing_in_a_readable_file_are_called_out() {
 #[test]
 fn a_dangling_symlink_destination_keeps_its_link() {
     let f = machine();
-    f.store_mcp(one_server());
+    f.commons_mcp(one_server());
     let real = f.root().join("dotfiles").join("claude.json");
     std::fs::create_dir_all(real.parent().unwrap()).unwrap();
     // The dotfiles repo is checked out but this file has not been created yet.
@@ -610,11 +610,11 @@ fn a_dangling_symlink_destination_keeps_its_link() {
 }
 
 #[test]
-fn the_store_file_has_one_documented_shape() {
+fn the_commons_file_has_one_documented_shape() {
     let f = machine();
     // A bare map is not the standard shape; guessing would turn `$schema` into
     // a server name.
-    f.store_mcp(r#"{"serena": {"command": "uvx"}}"#);
+    f.commons_mcp(r#"{"serena": {"command": "uvx"}}"#);
 
     f.run(&["sync"])
         .assert_code(1)
@@ -624,7 +624,7 @@ fn the_store_file_has_one_documented_shape() {
 #[test]
 fn a_server_that_is_not_an_object_is_refused() {
     let f = machine();
-    f.store_mcp(r#"{"mcpServers": {"broken": "should be an object"}}"#);
+    f.commons_mcp(r#"{"mcpServers": {"broken": "should be an object"}}"#);
 
     f.run(&["sync"])
         .assert_code(1)
@@ -634,7 +634,7 @@ fn a_server_that_is_not_an_object_is_refused() {
 #[test]
 fn one_change_is_reported_in_the_singular() {
     let f = machine();
-    f.store_mcp(one_server());
+    f.commons_mcp(one_server());
 
     f.run(&["sync"])
         .assert_clean()

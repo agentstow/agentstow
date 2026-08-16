@@ -1,4 +1,4 @@
-//! `adopt` — absorb an existing config into the Store and leave a link behind.
+//! `adopt` — absorb an existing config into the Commons and leave a link behind.
 //!
 //! Three cases, and no `--force`. Refusing to merge a divergence by hand is the
 //! point: silently discarding one side of it is exactly the failure mode this
@@ -7,6 +7,7 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
+use crate::commons::{self, Commons};
 use crate::config::Config;
 use crate::env::Env;
 use crate::family::Family;
@@ -14,14 +15,13 @@ use crate::link;
 use crate::lock;
 use crate::registry::Instructions;
 use crate::report::Reporter;
-use crate::store::{self, Store};
 use crate::target;
 use crate::{EXIT_CLEAN, EXIT_ERROR};
 
 pub fn run(env: &Env, config: &Config, r: &mut Reporter, raw_path: &str) -> i32 {
-    let store = Store::new(env.store());
-    if !store.exists() {
-        r.problem(store::missing_message(store.root()));
+    let commons = Commons::new(env.commons());
+    if !commons.exists() {
+        r.problem(commons::missing_message(commons.root()));
         return EXIT_ERROR;
     }
 
@@ -57,14 +57,14 @@ pub fn run(env: &Env, config: &Config, r: &mut Reporter, raw_path: &str) -> i32 
         .file_name()
         .map(|n| n.to_string_lossy().into_owned())
         .unwrap_or_default();
-    let destination = store.root().join(&placement.store_rel);
+    let destination = commons.root().join(&placement.commons_rel);
 
     // Everything is decided before the lock is taken, so a refusal leaves the
     // machine exactly as it was — not even a lock file.
     if destination.exists() && !link::same_contents(&path, &destination) {
         r.problem(format!(
-            "{} differs from the Store copy at {} — this is a Variant. \
-             Merge it by hand if you want it in the Store; agentstow will not \
+            "{} differs from the Commons copy at {} — this is a Variant. \
+             Merge it by hand if you want it in the Commons; agentstow will not \
              choose which side to discard",
             path.display(),
             destination.display()
@@ -94,7 +94,7 @@ pub fn run(env: &Env, config: &Config, r: &mut Reporter, raw_path: &str) -> i32 
     )
 }
 
-/// The Store does not have this name: move it in, leave a link behind.
+/// The Commons does not have this name: move it in, leave a link behind.
 fn move_in(
     path: &Path,
     destination: &Path,
@@ -112,7 +112,7 @@ fn move_in(
 
     if let Err(e) = move_path(path, destination) {
         r.problem(format!(
-            "cannot move {} into the Store: {e}",
+            "cannot move {} into the Commons: {e}",
             path.display()
         ));
         return EXIT_ERROR;
@@ -121,7 +121,7 @@ fn move_in(
     match place_link(path, destination) {
         Ok(text) => {
             r.line(format!(
-                "adopted {file_name} from {target} into the Store ({family})"
+                "adopted {file_name} from {target} into the Commons ({family})"
             ));
             r.line(format!("  {} → {}", path.display(), text.display()));
             EXIT_CLEAN
@@ -135,7 +135,7 @@ fn move_in(
     }
 }
 
-/// The Store already has an identical copy: drop the duplicate, link instead.
+/// The Commons already has an identical copy: drop the duplicate, link instead.
 fn relink(path: &Path, destination: &Path, file_name: &str, target: &str, r: &mut Reporter) -> i32 {
     let removed = if path.is_dir() {
         fs::remove_dir_all(path)
@@ -150,7 +150,7 @@ fn relink(path: &Path, destination: &Path, file_name: &str, target: &str, r: &mu
     match place_link(path, destination) {
         Ok(text) => {
             r.line(format!(
-                "{file_name} in {target} was identical to the Store copy — re-linked"
+                "{file_name} in {target} was identical to the Commons copy — re-linked"
             ));
             r.line(format!("  {} → {}", path.display(), text.display()));
             EXIT_CLEAN
@@ -170,14 +170,14 @@ fn place_link(path: &Path, destination: &Path) -> std::io::Result<PathBuf> {
     Ok(text)
 }
 
-/// Where in the Store an adopted path belongs: which Target it came from, and
-/// the Store-relative path it will occupy.
+/// Where in the Commons an adopted path belongs: which Target it came from, and
+/// the Commons-relative path it will occupy.
 struct Placement {
     target: String,
     /// What to call the family in reports.
     family: String,
-    /// Store-relative destination, e.g. `skills/research` or `AGENTS.md`.
-    store_rel: PathBuf,
+    /// Commons-relative destination, e.g. `skills/research` or `AGENTS.md`.
+    commons_rel: PathBuf,
 }
 
 /// Match a path against every Target surface agentstow manages: the fan-out
@@ -195,7 +195,7 @@ fn locate(env: &Env, config: &Config, path: &Path) -> Option<Placement> {
                 return Some(Placement {
                     target: target.name.clone(),
                     family: family.name().to_string(),
-                    store_rel: PathBuf::from(family.name()).join(&file_name),
+                    commons_rel: PathBuf::from(family.name()).join(&file_name),
                 });
             }
         }
@@ -213,7 +213,7 @@ fn locate(env: &Env, config: &Config, path: &Path) -> Option<Placement> {
                 return Some(Placement {
                     target: target.name.clone(),
                     family: "instructions".to_string(),
-                    store_rel: PathBuf::from(store::INSTRUCTIONS),
+                    commons_rel: PathBuf::from(commons::INSTRUCTIONS),
                 });
             }
         }

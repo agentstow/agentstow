@@ -1,6 +1,6 @@
 //! A global lock so a cron sync and a hand-run sync cannot interleave writes.
 //!
-//! The lock lives beside the tool's own configuration, never in the Store.
+//! The lock lives beside the tool's own configuration, never in the Commons.
 //! It is released when the process exits — advisory `flock` on Unix, an
 //! exclusive share mode on Windows — so a crashed run leaves nothing to
 //! clean up.

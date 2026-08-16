@@ -1,4 +1,4 @@
-//! The Store: the one place a synced config lives.
+//! The Commons: the one place a synced config lives.
 //!
 //! Scanning is deliberately strict about what it *cannot* see. The hand-rolled
 //! script this tool replaces globbed `*/`, so dot-prefixed and non-directory
@@ -9,17 +9,17 @@ use std::path::{Path, PathBuf};
 
 use crate::family::{Family, Shape};
 
-/// Store-relative directory for each fan-out family.
+/// Commons-relative directory for each fan-out family.
 pub const SKILLS: &str = "skills";
 pub const COMMANDS: &str = "commands";
 pub const SUBAGENTS: &str = "subagents";
 pub const HOOKS: &str = "hooks";
-/// Store-relative path of the shared instructions file.
+/// Commons-relative path of the shared instructions file.
 pub const INSTRUCTIONS: &str = "AGENTS.md";
-/// Store-relative path of the canonical MCP server file.
+/// Commons-relative path of the canonical MCP server file.
 pub const MCP: &str = "mcp.json";
 
-/// One usable entry in a Store family directory.
+/// One usable entry in a Commons family directory.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Entry {
     /// Display name: the directory name, or the file stem for file families.
@@ -30,7 +30,7 @@ pub struct Entry {
     pub path: PathBuf,
 }
 
-/// Something in the Store that agentstow will not sync, and why.
+/// Something in the Commons that agentstow will not sync, and why.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Issue {
     /// A dot-prefixed name: invisible to most agents' scanners, so never synced.
@@ -41,7 +41,7 @@ pub enum Issue {
         name: String,
         want: &'static str,
     },
-    /// A symlink in the Store whose own target is missing.
+    /// A symlink in the Commons whose own target is missing.
     DanglingLink { family: Family, name: String },
     /// The family directory could not be read.
     Unreadable { path: PathBuf, error: String },
@@ -52,14 +52,14 @@ impl std::fmt::Display for Issue {
         match self {
             Issue::DotPrefixed { family, name } => write!(
                 f,
-                "store {family}/{name}: dot-prefixed names are invisible to agents and are never synced"
+                "Commons {family}/{name}: dot-prefixed names are invisible to agents and are never synced"
             ),
             Issue::WrongShape { family, name, want } => {
-                write!(f, "store {family}/{name}: not a {want}, skipped")
+                write!(f, "Commons {family}/{name}: not a {want}, skipped")
             }
             Issue::DanglingLink { family, name } => write!(
                 f,
-                "store {family}/{name}: symlink target is missing, skipped"
+                "Commons {family}/{name}: symlink target is missing, skipped"
             ),
             Issue::Unreadable { path, error } => {
                 write!(f, "cannot read {}: {error}", path.display())
@@ -75,22 +75,22 @@ pub struct Scan {
     pub issues: Vec<Issue>,
 }
 
-/// What to tell the user when there is no Store at all. One message, so the
+/// What to tell the user when there is no Commons at all. One message, so the
 /// advice cannot drift between commands.
 pub fn missing_message(root: &Path) -> String {
     format!(
-        "no Store at {} — run `agentstow init` to create one",
+        "no Commons at {} — run `agentstow init` to create one",
         root.display()
     )
 }
 
-/// The canonical Store.
+/// The canonical Commons.
 #[derive(Debug, Clone)]
-pub struct Store {
+pub struct Commons {
     root: PathBuf,
 }
 
-impl Store {
+impl Commons {
     pub fn new(root: impl Into<PathBuf>) -> Self {
         Self { root: root.into() }
     }
@@ -136,7 +136,7 @@ impl Store {
                 continue;
             }
 
-            // symlink_metadata does not follow; metadata does. A Store entry may
+            // symlink_metadata does not follow; metadata does. A Commons entry may
             // legitimately be a symlink into a git repo, so judge the target.
             let link = fs::symlink_metadata(&path)
                 .map(|m| m.file_type().is_symlink())

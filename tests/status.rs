@@ -15,7 +15,7 @@ fn machine() -> Fixture {
 #[test]
 fn a_synced_machine_is_clean() {
     let f = machine();
-    f.store_skill("research");
+    f.commons_skill("research");
     f.run(&["sync"]).assert_clean();
 
     f.run(&["status"])
@@ -27,7 +27,7 @@ fn a_synced_machine_is_clean() {
 #[test]
 fn unsynced_work_is_actionable() {
     let f = machine();
-    f.store_skill("research");
+    f.commons_skill("research");
 
     // Exit 2 is reserved for "there is something to do", distinct from errors.
     f.run(&["status"])
@@ -50,8 +50,8 @@ fn reports_a_dangling_link_of_ours_as_actionable() {
 #[test]
 fn reports_a_link_that_is_not_in_canonical_form() {
     let f = machine();
-    f.store_skill("research");
-    let absolute = f.store().join("skills").join("research");
+    f.commons_skill("research");
+    let absolute = f.commons().join("skills").join("research");
     f.symlink(".claude/skills/research", &absolute.display().to_string());
 
     f.run(&["status"]).assert_code(2).assert_stdout_has("stale");
@@ -60,9 +60,9 @@ fn reports_a_link_that_is_not_in_canonical_form() {
 #[test]
 fn an_identical_variant_is_flagged_as_re_linkable() {
     let f = machine();
-    f.store_skill("research");
-    // Same bytes as the Store copy: a duplicate nobody meant to keep.
-    let body = std::fs::read_to_string(f.store().join("skills/research/SKILL.md")).unwrap();
+    f.commons_skill("research");
+    // Same bytes as the Commons copy: a duplicate nobody meant to keep.
+    let body = std::fs::read_to_string(f.commons().join("skills/research/SKILL.md")).unwrap();
     f.file(".claude/skills/research/SKILL.md", &body);
 
     f.run(&["status"])
@@ -75,7 +75,7 @@ fn an_identical_variant_is_flagged_as_re_linkable() {
 fn a_diverged_variant_is_reported_without_demanding_action() {
     let f = Fixture::new();
     f.agent(".claude");
-    f.store_skill("plannotator");
+    f.commons_skill("plannotator");
     f.file(".claude/skills/plannotator/SKILL.md", "a real variant\n");
     // Everything else is already in place.
     f.run(&["sync"]).assert_clean();
@@ -104,8 +104,8 @@ fn a_foreign_link_is_reported_without_demanding_action() {
 #[test]
 fn json_carries_the_same_facts_on_a_clean_stdout() {
     let f = machine();
-    f.store_skill("research");
-    f.store_skill("tdd");
+    f.commons_skill("research");
+    f.commons_skill("tdd");
     f.run(&["sync"]).assert_clean();
     f.symlink(".claude/skills/deleted", "../../.agents/skills/deleted");
 
@@ -138,8 +138,8 @@ fn json_carries_the_same_facts_on_a_clean_stdout() {
 #[test]
 fn json_stays_parseable_when_there_are_warnings() {
     let f = machine();
-    // A Store hygiene warning must go to stderr, never into the JSON stream.
-    f.store_file("skills/README.md", "not a skill\n");
+    // A Commons hygiene warning must go to stderr, never into the JSON stream.
+    f.commons_file("skills/README.md", "not a skill\n");
 
     let out = f.run(&["status", "--json"]);
 
@@ -151,7 +151,7 @@ fn json_stays_parseable_when_there_are_warnings() {
 #[test]
 fn status_changes_nothing() {
     let f = machine();
-    f.store_skill("research");
+    f.commons_skill("research");
     let before = f.tree();
 
     f.run(&["status"]).assert_code(2);
@@ -160,7 +160,7 @@ fn status_changes_nothing() {
 }
 
 #[test]
-fn a_missing_store_is_an_error_not_a_drift_report() {
+fn a_missing_commons_is_an_error_not_a_drift_report() {
     let f = Fixture::bare();
 
     f.run(&["status"])

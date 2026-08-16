@@ -1,4 +1,4 @@
-//! agentstow — sync AI coding agent configs from one canonical Store.
+//! agentstow — sync AI coding agent configs from one canonical Commons.
 //!
 //! The single testing seam is [`run`]: it takes argv, the process environment,
 //! and writers for stdout/stderr, and returns the process exit code. Every
@@ -11,6 +11,7 @@ use clap::Parser;
 
 pub mod adopt;
 pub mod cli;
+pub mod commons;
 pub mod config;
 pub mod config_edit;
 pub mod doctor;
@@ -28,12 +29,11 @@ pub mod registry;
 pub mod render;
 pub mod report;
 pub mod status;
-pub mod store;
 pub mod sync;
 pub mod target;
 pub mod write;
 
-/// Everything is in the state the Store describes.
+/// Everything is in the state the Commons describes.
 pub const EXIT_CLEAN: i32 = 0;
 /// The command could not complete.
 pub const EXIT_ERROR: i32 = 1;

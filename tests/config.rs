@@ -13,7 +13,7 @@ fn a_disabled_target_disappears_everywhere() {
     let f = Fixture::new();
     f.agent(".claude");
     f.agent(".cursor");
-    f.store_skill("research");
+    f.commons_skill("research");
     config(&f, "[targets]\ncursor = false\n");
 
     f.run(&["sync"]).assert_clean();
@@ -31,7 +31,7 @@ fn a_disabled_target_disappears_everywhere() {
 fn a_custom_target_is_treated_like_any_other() {
     let f = Fixture::new();
     f.agent(".myagent");
-    f.store_skill("research");
+    f.commons_skill("research");
     config(
         &f,
         "[custom.myagent]\nroot = \".myagent\"\nskills = \".myagent/skills\"\n",
@@ -52,7 +52,7 @@ fn a_custom_target_is_treated_like_any_other() {
 #[test]
 fn a_custom_target_that_is_not_installed_stays_inert() {
     let f = Fixture::new();
-    f.store_skill("research");
+    f.commons_skill("research");
     config(
         &f,
         "[custom.myagent]\nroot = \".myagent\"\nskills = \".myagent/skills\"\n",
@@ -70,7 +70,7 @@ fn a_custom_target_that_is_not_installed_stays_inert() {
 fn no_config_file_means_defaults() {
     let f = Fixture::new();
     f.agent(".claude");
-    f.store_skill("research");
+    f.commons_skill("research");
 
     f.run(&["sync"]).assert_clean();
 
@@ -81,7 +81,7 @@ fn no_config_file_means_defaults() {
 fn an_empty_config_file_means_defaults() {
     let f = Fixture::new();
     f.agent(".claude");
-    f.store_skill("research");
+    f.commons_skill("research");
     config(&f, "");
 
     f.run(&["sync"]).assert_clean();
@@ -120,7 +120,7 @@ fn a_custom_target_without_a_root_is_rejected() {
 }
 
 #[test]
-fn configuration_never_lands_in_the_store() {
+fn configuration_never_lands_in_the_commons() {
     let f = Fixture::new();
     f.agent(".claude");
     config(&f, "[targets]\ncursor = false\n");
@@ -128,8 +128,8 @@ fn configuration_never_lands_in_the_store() {
     f.run(&["sync"]).assert_clean();
 
     assert!(
-        !f.store().join("agentstow.toml").exists(),
-        "the Store holds ecosystem content only"
+        !f.commons().join("agentstow.toml").exists(),
+        "the Commons holds ecosystem content only"
     );
 }
 

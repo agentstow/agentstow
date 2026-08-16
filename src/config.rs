@@ -1,6 +1,6 @@
 //! Tool configuration: `~/.agentstow/agentstow.toml`.
 //!
-//! Deliberately tiny, and deliberately *not* in the Store — the Store holds
+//! Deliberately tiny, and deliberately *not* in the Commons — the Commons holds
 //! ecosystem content that other tools may one day read, so nothing
 //! agentstow-specific squats there. An absent file means pure defaults.
 //!
@@ -35,7 +35,7 @@ pub struct CustomTarget {
 
 /// Per-server MCP settings: who gets it, and any agent-specific knobs.
 ///
-/// Both live here rather than in the Store because the Store holds the
+/// Both live here rather than in the Commons because the Commons holds the
 /// ecosystem-standard shape only.
 #[derive(Debug, Clone, Default)]
 pub struct McpRule {

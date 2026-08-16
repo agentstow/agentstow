@@ -1,4 +1,4 @@
-//! `doctor` — machine readiness: which agents are installed, is the Store
+//! `doctor` — machine readiness: which agents are installed, is the Commons
 //! usable, and is anything in it going to be silently skipped.
 
 mod common;
@@ -50,7 +50,7 @@ fn creates_nothing() {
     let f = Fixture::new();
     f.agent(".claude");
     f.agent(".gemini");
-    f.store_skill("research");
+    f.commons_skill("research");
     let before = f.tree();
 
     f.run(&["doctor"]).assert_clean();
@@ -74,13 +74,13 @@ fn does_not_create_roots_for_agents_that_are_not_installed() {
 }
 
 #[test]
-fn warns_about_store_entries_that_agents_would_never_see() {
+fn warns_about_commons_entries_that_agents_would_never_see() {
     let f = Fixture::new();
-    f.store_skill("research");
+    f.commons_skill("research");
     // Dot-prefixed: invisible to the agents' own scanners.
-    f.store_file("skills/.hidden/SKILL.md", "hidden\n");
+    f.commons_file("skills/.hidden/SKILL.md", "hidden\n");
     // A loose file where a skill directory belongs.
-    f.store_file("skills/README.md", "not a skill\n");
+    f.commons_file("skills/README.md", "not a skill\n");
 
     let out = f.run(&["doctor"]);
 
@@ -91,9 +91,9 @@ fn warns_about_store_entries_that_agents_would_never_see() {
 }
 
 #[test]
-fn warns_about_a_dangling_symlink_in_the_store() {
+fn warns_about_a_dangling_symlink_in_the_commons() {
     let f = Fixture::new();
-    f.store_symlink("skills/gone", "../../nowhere");
+    f.commons_symlink("skills/gone", "../../nowhere");
 
     let out = f.run(&["doctor"]);
 
@@ -105,14 +105,14 @@ fn warns_about_a_dangling_symlink_in_the_store() {
 #[test]
 fn warnings_do_not_make_the_run_fail() {
     let f = Fixture::new();
-    f.store_file("skills/README.md", "not a skill\n");
+    f.commons_file("skills/README.md", "not a skill\n");
 
     // A warning is advisory: it is reported, but the machine is still usable.
     f.run(&["doctor"]).assert_code(0);
 }
 
 #[test]
-fn missing_store_is_a_problem_that_names_the_fix() {
+fn missing_commons_is_a_problem_that_names_the_fix() {
     let f = Fixture::bare();
 
     f.run(&["doctor"])
@@ -124,7 +124,7 @@ fn missing_store_is_a_problem_that_names_the_fix() {
 fn a_clean_machine_reports_nothing_on_stderr() {
     let f = Fixture::new();
     f.agent(".claude");
-    f.store_skill("research");
+    f.commons_skill("research");
 
     let out = f.run(&["doctor"]);
 
@@ -146,16 +146,16 @@ fn counts_the_agents_it_knows_about_but_did_not_find() {
 }
 
 #[test]
-fn init_creates_the_store_and_nothing_else() {
+fn init_creates_the_commons_and_nothing_else() {
     let f = Fixture::bare();
 
     f.run(&["init"]).assert_clean().assert_stdout_has("Created");
 
-    assert!(f.store().join("skills").is_dir());
-    assert!(f.store().join("commands").is_dir());
-    assert!(f.store().join("subagents").is_dir());
+    assert!(f.commons().join("skills").is_dir());
+    assert!(f.commons().join("commands").is_dir());
+    assert!(f.commons().join("subagents").is_dir());
     assert!(
-        !f.store().join("AGENTS.md").exists(),
+        !f.commons().join("AGENTS.md").exists(),
         "an empty AGENTS.md would fan out as empty instructions"
     );
     for agent in agentstow::registry::AGENTS {
@@ -182,28 +182,28 @@ fn the_advice_to_run_init_actually_works() {
 #[test]
 fn init_is_safe_to_run_twice() {
     let f = Fixture::new();
-    f.store_skill("research");
+    f.commons_skill("research");
 
     f.run(&["init"])
         .assert_clean()
         .assert_stdout_has("already present");
 
-    assert!(f.store().join("skills/research/SKILL.md").exists());
+    assert!(f.commons().join("skills/research/SKILL.md").exists());
 }
 
-// --- The Store as a shared commons (ADR-0004) -------------------------------
+// --- The Commons as a shared commons (ADR-0004) -----------------------------
 
 #[test]
-fn names_store_entries_that_are_not_agentstows() {
+fn names_commons_entries_that_are_not_agentstows() {
     // `~/.agents/` is a commons: opencode, oh-my-pi and hermes read it directly
     // and the `skills` CLI keeps its lock file there. A neighbour's entry is
     // named so the sharing is visible — never called an issue, never counted.
     let f = Fixture::new();
-    f.store_file(".skill-lock.json", "{}");
+    f.commons_file(".skill-lock.json", "{}");
 
     f.run(&["doctor"])
         .assert_clean()
-        .assert_stdout_has("Other tools in the Store")
+        .assert_stdout_has("Other tools in the Commons")
         .assert_stdout_has(".skill-lock.json")
         .assert_no_output_contains("issue");
 }
@@ -211,21 +211,21 @@ fn names_store_entries_that_are_not_agentstows() {
 #[test]
 fn says_nothing_about_other_tools_when_there_are_none() {
     let f = Fixture::new();
-    f.store_skill("research");
+    f.commons_skill("research");
 
     f.run(&["doctor"])
         .assert_clean()
-        .assert_stdout_lacks("Other tools in the Store");
+        .assert_stdout_lacks("Other tools in the Commons");
 }
 
 #[test]
-fn a_relocated_store_warns_that_native_agents_will_not_see_it() {
-    // AGENTSTOW_HOME moves agentstow's Store but cannot move the path a Native
+fn a_relocated_commons_warns_that_native_agents_will_not_see_it() {
+    // AGENTSTOW_HOME moves agentstow's Commons but cannot move the path a Native
     // agent hardcodes, so the two diverge in silence unless doctor says so.
     let f = Fixture::new();
     f.agent(".config/opencode");
     let elsewhere = f.root().join("elsewhere");
-    std::fs::create_dir_all(elsewhere.join("skills")).expect("create alternate store");
+    std::fs::create_dir_all(elsewhere.join("skills")).expect("create alternate Commons");
 
     f.run_with_vars(
         &["doctor"],
@@ -240,11 +240,11 @@ fn a_relocated_store_warns_that_native_agents_will_not_see_it() {
 }
 
 #[test]
-fn a_relocated_store_is_silent_when_no_native_agent_is_installed() {
+fn a_relocated_commons_is_silent_when_no_native_agent_is_installed() {
     let f = Fixture::new();
     f.agent(".claude");
     let elsewhere = f.root().join("elsewhere");
-    std::fs::create_dir_all(elsewhere.join("skills")).expect("create alternate store");
+    std::fs::create_dir_all(elsewhere.join("skills")).expect("create alternate Commons");
 
     f.run_with_vars(
         &["doctor"],
@@ -258,7 +258,7 @@ fn a_relocated_store_is_silent_when_no_native_agent_is_installed() {
 }
 
 #[test]
-fn the_canonical_store_never_warns_about_native_agents() {
+fn the_canonical_commons_never_warns_about_native_agents() {
     let f = Fixture::new();
     f.agent(".config/opencode");
 

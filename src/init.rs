@@ -1,6 +1,6 @@
-//! `init` — create the Store skeleton, then say what this machine already has.
+//! `init` — create the Commons skeleton, then say what this machine already has.
 //!
-//! Scaffolding is deliberately minimal: the Store and its fan-out family
+//! Scaffolding is deliberately minimal: the Commons and its fan-out family
 //! directories, nothing else. It never creates an agent root, because a root's
 //! existence is what detection means; it never invents an `AGENTS.md`, because
 //! an empty one would fan out to every agent as empty instructions; and it
@@ -16,6 +16,7 @@ use std::collections::BTreeSet;
 use std::fs;
 use std::path::Path;
 
+use crate::commons::{self, Commons};
 use crate::config::Config;
 use crate::env::Env;
 use crate::family::Family;
@@ -23,16 +24,15 @@ use crate::instructions;
 use crate::mcp;
 use crate::registry::Mcp;
 use crate::report::Reporter;
-use crate::store::{self, Store};
 use crate::target::{self, Target};
 use crate::{EXIT_CLEAN, EXIT_ERROR};
 
 pub fn run(env: &Env, config: &Config, r: &mut Reporter) -> i32 {
-    let store = Store::new(env.store());
-    let existed = store.exists();
+    let commons = Commons::new(env.commons());
+    let existed = commons.exists();
 
-    for dir in std::iter::once(store.root().to_path_buf())
-        .chain(Family::ALL.iter().map(|f| store.family_dir(f.name())))
+    for dir in std::iter::once(commons.root().to_path_buf())
+        .chain(Family::ALL.iter().map(|f| commons.family_dir(f.name())))
     {
         if let Err(e) = fs::create_dir_all(&dir) {
             r.problem(format!("cannot create {}: {e}", dir.display()));
@@ -42,11 +42,14 @@ pub fn run(env: &Env, config: &Config, r: &mut Reporter) -> i32 {
 
     if existed {
         r.line(format!(
-            "Store already present at {}",
-            store.root().display()
+            "Commons already present at {}",
+            commons.root().display()
         ));
     } else {
-        r.line(format!("Created the Store at {}", store.root().display()));
+        r.line(format!(
+            "Created the Commons at {}",
+            commons.root().display()
+        ));
     }
     for family in Family::ALL {
         r.line(format!("  {}/", family.name()));
@@ -55,8 +58,8 @@ pub fn run(env: &Env, config: &Config, r: &mut Reporter) -> i32 {
 
     let targets = target::resolve(env, config);
     report_agents(&targets, r);
-    let offered = report_candidates(env, &store, &targets, r);
-    report_conflicts(env, config, &store, r);
+    let offered = report_candidates(env, &commons, &targets, r);
+    report_conflicts(env, config, &commons, r);
 
     r.blank();
     if offered {
@@ -81,13 +84,13 @@ fn report_agents(targets: &[Target], r: &mut Reporter) {
     ));
 }
 
-/// What is on this machine that the Store could take over. Returns whether
+/// What is on this machine that the Commons could take over. Returns whether
 /// anything was offered.
-fn report_candidates(env: &Env, store: &Store, targets: &[Target], r: &mut Reporter) -> bool {
+fn report_candidates(env: &Env, commons: &Commons, targets: &[Target], r: &mut Reporter) -> bool {
     let mut offered = false;
 
     for family in Family::ALL {
-        let held: BTreeSet<String> = store
+        let held: BTreeSet<String> = commons
             .scan(*family)
             .entries
             .into_iter()
@@ -113,7 +116,7 @@ fn report_candidates(env: &Env, store: &Store, targets: &[Target], r: &mut Repor
         offered = true;
         r.blank();
         r.line(format!(
-            "{} {} not in the Store:",
+            "{} {} not in the Commons:",
             found.len(),
             family.name()
         ));
@@ -127,7 +130,7 @@ fn report_candidates(env: &Env, store: &Store, targets: &[Target], r: &mut Repor
     }
 
     // MCP servers are named rather than pathed, and adopt takes them in bulk.
-    let known: BTreeSet<String> = mcp::store_servers(&store.root().join(store::MCP))
+    let known: BTreeSet<String> = mcp::commons_servers(&commons.root().join(commons::MCP))
         .map(|servers| servers.keys().cloned().collect())
         .unwrap_or_default();
     let mut servers: BTreeSet<String> = BTreeSet::new();
@@ -159,7 +162,7 @@ fn report_candidates(env: &Env, store: &Store, targets: &[Target], r: &mut Repor
         let names: Vec<&str> = servers.iter().map(String::as_str).collect();
         r.blank();
         r.line(format!(
-            "{} MCP servers not in the Store: {}",
+            "{} MCP servers not in the Commons: {}",
             names.len(),
             names.join(", ")
         ));
@@ -168,14 +171,14 @@ fn report_candidates(env: &Env, store: &Store, targets: &[Target], r: &mut Repor
 
     if !offered {
         r.blank();
-        r.line("Nothing to adopt — no agent config here is outside the Store.");
+        r.line("Nothing to adopt — no agent config here is outside the Commons.");
     }
     offered
 }
 
 /// Instructions files another tool already owns, which agentstow will not touch.
-fn report_conflicts(env: &Env, config: &Config, store: &Store, r: &mut Reporter) {
-    let items = instructions::survey(env, config, &store.root().join(store::INSTRUCTIONS));
+fn report_conflicts(env: &Env, config: &Config, commons: &Commons, r: &mut Reporter) {
+    let items = instructions::survey(env, config, &commons.root().join(commons::INSTRUCTIONS));
     let conflicts: Vec<&instructions::Item> = items
         .iter()
         .filter(|i| i.state == instructions::State::Conflict)

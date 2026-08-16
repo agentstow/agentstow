@@ -2,7 +2,7 @@
 //! native hook arrays.
 //!
 //! Ownership here is **element identity** (ADR-0003): a hook object whose
-//! command string matches a Store hook is agentstow's to update, and every
+//! command string matches a Commons hook is agentstow's to update, and every
 //! other element in the same event array belongs to whoever put it there. That
 //! matters more than usual, because these arrays are where several tools
 //! (claude-mem, plugins, the user) all keep their own hooks.
@@ -12,7 +12,7 @@
 //! * **Trust metadata is never written.** Codex records a `trusted_hash` per
 //!   hook in `config.toml`, a different file from the `hooks.json` this writes,
 //!   so approving code execution stays the user's decision by construction.
-//! * **Scripts are not managed.** A Store command must be a path that means the
+//! * **Scripts are not managed.** A Commons command must be a path that means the
 //!   same thing to every agent; agentstow syncs the declaration, not the file
 //!   it runs.
 //! * **`${env:VAR}` is not expanded.** The command string *is* the identity, so
@@ -74,7 +74,7 @@ struct Event {
     gemini: Option<&'static str>,
 }
 
-/// One hook as the Store declares it.
+/// One hook as the Commons declares it.
 #[derive(Debug, Clone)]
 pub struct Hook {
     pub event: String,
@@ -86,15 +86,15 @@ pub struct Hook {
 /// What agentstow found for one hook in one agent.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum State {
-    /// Present and exactly what the Store renders.
+    /// Present and exactly what the Commons renders.
     Managed,
-    /// In the Store, absent from this agent.
+    /// In the Commons, absent from this agent.
     Missing,
-    /// Present but different — the Store wins.
+    /// Present but different — the Commons wins.
     Drifted,
     /// This agent has no name for this moment, so nothing is written.
     Unsupported,
-    /// In the agent's config, not in the Store. Never touched.
+    /// In the agent's config, not in the Commons. Never touched.
     Foreign,
 }
 
@@ -127,7 +127,7 @@ impl State {
 pub struct Item {
     pub target: String,
     pub event: String,
-    /// What to call this hook in a report. For our own hooks that is the Store
+    /// What to call this hook in a report. For our own hooks that is the Commons
     /// command verbatim, unresolved. For a Foreign hook it is the program only:
     /// somebody else's command line can carry a credential, and echoing it into
     /// a terminal or a CI log is exposure nobody asked for.
@@ -145,9 +145,9 @@ impl Item {
         match self.state {
             State::Managed => String::new(),
             State::Missing => "not in this agent's hooks yet".into(),
-            State::Drifted => "differs from the Store — will be restored".into(),
+            State::Drifted => "differs from the Commons — will be restored".into(),
             State::Unsupported => format!("{} has no {} hook", self.target, self.event),
-            State::Foreign => "not in the Store — left alone".into(),
+            State::Foreign => "not in the Commons — left alone".into(),
         }
     }
 }
@@ -169,18 +169,18 @@ pub struct Survey {
     pub skipped: Vec<String>,
 }
 
-/// Survey every hook-capable Target against the Store's hook files.
-pub fn survey(env: &Env, config: &Config, store_dir: &Path) -> Result<Survey, Error> {
+/// Survey every hook-capable Target against the Commons' hook files.
+pub fn survey(env: &Env, config: &Config, commons_dir: &Path) -> Result<Survey, Error> {
     let mut survey = Survey::default();
 
     // The presence of the directory, not of any file in it, is what says the
     // user uses this family. That distinction is what lets a hook deleted from
-    // the Store still be reported as the leftover it is, without listing every
+    // the Commons still be reported as the leftover it is, without listing every
     // agent's own hooks for someone who never adopted the family at all.
-    if !store_dir.is_dir() {
+    if !commons_dir.is_dir() {
         return Ok(survey);
     }
-    let declared = read_store(store_dir)?;
+    let declared = read_commons(commons_dir)?;
 
     for target in target::resolve(env, config) {
         let Some(agent) = target.agent else {
@@ -246,7 +246,7 @@ pub fn survey(env: &Env, config: &Config, store_dir: &Path) -> Result<Survey, Er
             });
         }
 
-        // Anything in this agent's hooks that the Store does not declare.
+        // Anything in this agent's hooks that the Commons does not declare.
         for (event, groups) in &existing {
             for object in flatten(groups) {
                 let Some(command) = object.get("command").and_then(Value::as_str) else {
@@ -318,7 +318,7 @@ pub fn apply(path: &Path, root_key: &str, items: &[&Item]) -> Result<crate::mcp:
             });
         };
 
-        // Take it out of wherever it was, then put it where the Store says it
+        // Take it out of wherever it was, then put it where the Commons says it
         // belongs. Replacing in place would keep a stale matcher forever.
         remove_by_command(groups, rendered);
         if let Some(group) = group_with_matcher(groups, item.matcher.as_deref()) {
@@ -486,8 +486,8 @@ fn render(hook: &Hook) -> Value {
     Value::Object(object)
 }
 
-/// Every hook the Store declares, from `hooks/<event>.toml`.
-fn read_store(dir: &Path) -> Result<Vec<Hook>, Error> {
+/// Every hook the Commons declares, from `hooks/<event>.toml`.
+fn read_commons(dir: &Path) -> Result<Vec<Hook>, Error> {
     let entries = match std::fs::read_dir(dir) {
         Ok(entries) => entries,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),

@@ -4,8 +4,8 @@
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
-/// Where the Store lives when `AGENTSTOW_HOME` is unset.
-pub const STORE_DIR: &str = ".agents";
+/// Where the Commons lives when `AGENTSTOW_HOME` is unset.
+pub const COMMONS_DIR: &str = ".agents";
 /// Where tool configuration lives when the home directory is `~`.
 pub const CONFIG_DIR: &str = ".agentstow";
 
@@ -14,8 +14,8 @@ pub const CONFIG_DIR: &str = ".agentstow";
 pub struct Env {
     /// Home directory for Target resolution — `AGENTSTOW_TARGET_ROOT` or `HOME`.
     home: PathBuf,
-    /// The Store — `AGENTSTOW_HOME`, else `<home>/.agents`.
-    store: PathBuf,
+    /// The Commons — `AGENTSTOW_HOME`, else `<home>/.agents`.
+    commons: PathBuf,
     /// Tool configuration directory — `<home>/.agentstow`.
     config: PathBuf,
     vars: BTreeMap<String, String>,
@@ -35,7 +35,7 @@ impl std::fmt::Display for NoHome {
 
 impl Env {
     /// Resolve from environment variables. `AGENTSTOW_TARGET_ROOT` redirects
-    /// home-relative Target resolution; `AGENTSTOW_HOME` relocates the Store
+    /// home-relative Target resolution; `AGENTSTOW_HOME` relocates the Commons
     /// independently, so tests can point them at different trees.
     pub fn resolve(vars: &[(String, String)]) -> Result<Self, NoHome> {
         let vars: BTreeMap<String, String> = vars.iter().cloned().collect();
@@ -49,16 +49,16 @@ impl Env {
             .map(PathBuf::from)
             .ok_or(NoHome)?;
 
-        let store = match vars.get("AGENTSTOW_HOME").filter(|v| !v.is_empty()) {
+        let commons = match vars.get("AGENTSTOW_HOME").filter(|v| !v.is_empty()) {
             Some(v) => PathBuf::from(v),
-            None => home.join(STORE_DIR),
+            None => home.join(COMMONS_DIR),
         };
 
         let config = home.join(CONFIG_DIR);
 
         Ok(Self {
             home,
-            store,
+            commons,
             config,
             vars,
         })
@@ -69,12 +69,12 @@ impl Env {
         &self.home
     }
 
-    /// The Store root.
-    pub fn store(&self) -> &Path {
-        &self.store
+    /// The Commons root.
+    pub fn commons(&self) -> &Path {
+        &self.commons
     }
 
-    /// The tool configuration directory (never inside the Store).
+    /// The tool configuration directory (never inside the Commons).
     pub fn config_dir(&self) -> &Path {
         &self.config
     }

@@ -1,7 +1,7 @@
 //! The single testing seam.
 //!
 //! Every test builds a throwaway tree, points `AGENTSTOW_TARGET_ROOT` (home) and
-//! `AGENTSTOW_HOME` (Store) at it, and drives the CLI through `agentstow::run`.
+//! `AGENTSTOW_HOME` (Commons) at it, and drives the CLI through `agentstow::run`.
 //! Nothing here touches the real home directory, and no test reaches inside the
 //! implementation — assertions are on the resulting filesystem, stdout, stderr
 //! and exit code only.
@@ -91,31 +91,31 @@ impl Outcome {
     }
 }
 
-/// A throwaway machine: a home directory, and a Store beside it.
+/// A throwaway machine: a home directory, and a Commons beside it.
 pub struct Fixture {
     _dir: TempDir,
     home: PathBuf,
-    store: PathBuf,
+    commons: PathBuf,
 }
 
 impl Fixture {
-    /// A machine with no Store and no agents installed.
+    /// A machine with no Commons and no agents installed.
     pub fn bare() -> Self {
         let dir = tempfile::tempdir().expect("create tempdir");
         let home = dir.path().join("home");
         fs::create_dir_all(&home).expect("create home");
-        let store = home.join(".agents");
+        let commons = home.join(".agents");
         Self {
             _dir: dir,
             home,
-            store,
+            commons,
         }
     }
 
-    /// A machine with an initialised, empty Store.
+    /// A machine with an initialised, empty Commons.
     pub fn new() -> Self {
         let f = Self::bare();
-        fs::create_dir_all(f.store.join("skills")).expect("create store");
+        fs::create_dir_all(f.commons.join("skills")).expect("create Commons");
         f
     }
 
@@ -123,12 +123,12 @@ impl Fixture {
         &self.home
     }
 
-    pub fn store(&self) -> &Path {
-        &self.store
+    pub fn commons(&self) -> &Path {
+        &self.commons
     }
 
     /// The temporary directory containing the home — somewhere to put a second
-    /// tree when a test needs one (an alternate Store, a decoy home).
+    /// tree when a test needs one (an alternate Commons, a decoy home).
     pub fn root(&self) -> &Path {
         self._dir.path()
     }
@@ -160,10 +160,10 @@ impl Fixture {
         self
     }
 
-    /// Add a skill to the Store.
-    pub fn store_skill(&self, name: &str) -> &Self {
-        let dir = self.store.join("skills").join(name);
-        fs::create_dir_all(&dir).expect("create store skill");
+    /// Add a skill to the Commons.
+    pub fn commons_skill(&self, name: &str) -> &Self {
+        let dir = self.commons.join("skills").join(name);
+        fs::create_dir_all(&dir).expect("create Commons skill");
         fs::write(
             dir.join("SKILL.md"),
             format!("---\nname: {name}\n---\n\nbody of {name}\n"),
@@ -172,10 +172,10 @@ impl Fixture {
         self
     }
 
-    /// Create a Store-relative symlink pointing at `target` (verbatim, so a
+    /// Create a Commons-relative symlink pointing at `target` (verbatim, so a
     /// test can create a deliberately dangling one).
-    pub fn store_symlink(&self, rel: &str, target: &str) -> &Self {
-        let p = self.store.join(rel);
+    pub fn commons_symlink(&self, rel: &str, target: &str) -> &Self {
+        let p = self.commons.join(rel);
         if let Some(parent) = p.parent() {
             fs::create_dir_all(parent).expect("create parents");
         }
@@ -183,13 +183,13 @@ impl Fixture {
         self
     }
 
-    /// Write a Store-relative file, creating parents.
-    pub fn store_file(&self, rel: &str, body: &str) -> &Self {
-        let p = self.store.join(rel);
+    /// Write a Commons-relative file, creating parents.
+    pub fn commons_file(&self, rel: &str, body: &str) -> &Self {
+        let p = self.commons.join(rel);
         if let Some(parent) = p.parent() {
             fs::create_dir_all(parent).expect("create parents");
         }
-        fs::write(&p, body).expect("write store file");
+        fs::write(&p, body).expect("write Commons file");
         self
     }
 
@@ -199,7 +199,7 @@ impl Fixture {
             args,
             &[
                 ("AGENTSTOW_TARGET_ROOT", self.home.display().to_string()),
-                ("AGENTSTOW_HOME", self.store.display().to_string()),
+                ("AGENTSTOW_HOME", self.commons.display().to_string()),
             ],
         )
     }
@@ -272,10 +272,10 @@ impl Fixture {
         self
     }
 
-    /// Raw text of a Store-relative file.
-    pub fn contents_of_store(&self, rel: &str) -> String {
-        fs::read_to_string(self.store.join(rel))
-            .unwrap_or_else(|e| panic!("cannot read store/{rel}: {e}"))
+    /// Raw text of a Commons-relative file.
+    pub fn contents_of_commons(&self, rel: &str) -> String {
+        fs::read_to_string(self.commons.join(rel))
+            .unwrap_or_else(|e| panic!("cannot read Commons/{rel}: {e}"))
     }
 
     /// Parse a home-relative JSON file.
@@ -300,9 +300,9 @@ impl Fixture {
             & 0o777
     }
 
-    /// Write the Store's canonical MCP file.
-    pub fn store_mcp(&self, body: &str) -> &Self {
-        self.store_file("mcp.json", body)
+    /// Write the Commons' canonical MCP file.
+    pub fn commons_mcp(&self, body: &str) -> &Self {
+        self.commons_file("mcp.json", body)
     }
 
     /// Run with the standard overrides plus extra environment variables — the
@@ -311,7 +311,7 @@ impl Fixture {
     pub fn run_with_env(&self, args: &[&str], extra: &[(&str, &str)]) -> Outcome {
         let mut vars = vec![
             ("AGENTSTOW_TARGET_ROOT", self.home.display().to_string()),
-            ("AGENTSTOW_HOME", self.store.display().to_string()),
+            ("AGENTSTOW_HOME", self.commons.display().to_string()),
         ];
         for (k, v) in extra {
             vars.push((k, v.to_string()));
