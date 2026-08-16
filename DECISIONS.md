@@ -1006,3 +1006,22 @@ swapped `~/.codex/skills` for `~/.pi/agent/skills` (Codex is Native now), the
 landing coverage matrix grew OpenClaw and Hermes rows from `src/registry.rs`,
 and zh keeps 子智能体 as prose for the things while every directory reads
 `agents/`, with the Commons glossed once per page as Commons（共享配置区）.
+
+## 2026-08-16 — Rename to "dotagents" considered and rejected; name stays agentstow
+
+One day after 2.0.0 shipped, a rename to "dotagents" was weighed (the
+dotagents.net and .cc registrations prompted it). Rejected on namespace
+evidence, all verified today: npm `dotagents` is a competing tool in this
+exact niche ("Carry your AI-agent skills and setup across machines",
+beautyfree, v0.4.0), crates.io `dotagents` is squatted with 0.0.0
+placeholders since May 2026, the GitHub `dotagents` org exists, and
+dotagents.com/.dev/.org are registered to third parties. The name's
+mindshare belongs to iannuttall/dotagents (703 stars, same problem space),
+with getsentry/dotagents, bgreenwell/dotagents and the ".agents Protocol"
+crowding the rest — the v2 naming pass had already rejected "DotAgents" as
+a vocabulary term for being an ecosystem homonym, and the same argument
+applies with more force to the product name. agentstow, by contrast, is
+collision-free on every registry, owns its .dev/.com/.org triple through
+2027, and names the mechanic (GNU Stow). dotagents.net and .cc are kept as
+defensive holdings and 301-redirect to agentstow.dev via Cloudflare Single
+Redirects; no code, package, or site identity changes.
