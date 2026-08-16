@@ -167,10 +167,16 @@ impl std::fmt::Display for Error {
 pub struct Survey {
     pub items: Vec<Item>,
     pub skipped: Vec<String>,
+    /// Faults in the Commons' hook files. Any entry means the whole plan is
+    /// unbuildable, so `sync` stops before its first write (ADR-0007).
+    pub problems: Vec<String>,
 }
 
 /// Survey every hook-capable Target against the Commons' hook files.
-pub fn survey(env: &Env, config: &Config, commons_dir: &Path) -> Result<Survey, Error> {
+///
+/// A fault in a Commons hook file is collected into `problems` rather than
+/// returned at first hit, so one run names every broken file.
+pub fn survey(env: &Env, config: &Config, commons_dir: &Path) -> Survey {
     let mut survey = Survey::default();
 
     // The presence of the directory, not of any file in it, is what says the
@@ -178,9 +184,9 @@ pub fn survey(env: &Env, config: &Config, commons_dir: &Path) -> Result<Survey, 
     // the Commons still be reported as the leftover it is, without listing every
     // agent's own hooks for someone who never adopted the family at all.
     if !commons_dir.is_dir() {
-        return Ok(survey);
+        return survey;
     }
-    let declared = read_commons(commons_dir)?;
+    let declared = read_commons(commons_dir, &mut survey.problems);
 
     for target in target::resolve(env, config) {
         let Some(agent) = target.agent else {
@@ -274,7 +280,7 @@ pub fn survey(env: &Env, config: &Config, commons_dir: &Path) -> Result<Survey, 
         }
     }
 
-    Ok(survey)
+    survey
 }
 
 /// Merge the Managed hooks into one agent's config file.
@@ -487,14 +493,16 @@ fn render(hook: &Hook) -> Value {
 }
 
 /// Every hook the Commons declares, from `hooks/<event>.toml`.
-fn read_commons(dir: &Path) -> Result<Vec<Hook>, Error> {
+///
+/// Each file's fault lands in `problems` and the scan moves on, so the user
+/// fixes one complete list rather than one broken file per run.
+fn read_commons(dir: &Path, problems: &mut Vec<String>) -> Vec<Hook> {
     let entries = match std::fs::read_dir(dir) {
         Ok(entries) => entries,
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Vec::new(),
         Err(e) => {
-            return Err(Error {
-                message: format!("cannot read {}: {e}", dir.display()),
-            });
+            problems.push(format!("cannot read {}: {e}", dir.display()));
+            return Vec::new();
         }
     };
 
@@ -513,17 +521,19 @@ fn read_commons(dir: &Path) -> Result<Vec<Hook>, Error> {
             .unwrap_or_default();
         if !EVENTS.iter().any(|e| e.canonical == event) {
             let known: Vec<&str> = EVENTS.iter().map(|e| e.canonical).collect();
-            return Err(Error {
-                message: format!(
-                    "{}: `{event}` is not a hook event — expected one of {}",
-                    path.display(),
-                    known.join(", ")
-                ),
-            });
+            problems.push(format!(
+                "{}: `{event}` is not a hook event — expected one of {}",
+                path.display(),
+                known.join(", ")
+            ));
+            continue;
         }
-        hooks.extend(read_hook_file(&path, &event)?);
+        match read_hook_file(&path, &event) {
+            Ok(declared) => hooks.extend(declared),
+            Err(e) => problems.push(e.message),
+        }
     }
-    Ok(hooks)
+    hooks
 }
 
 fn read_hook_file(path: &Path, event: &str) -> Result<Vec<Hook>, Error> {

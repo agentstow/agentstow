@@ -28,13 +28,15 @@ pub fn list(env: &Env, config: &Config, r: &mut Reporter, as_json: bool) -> i32 
     let commons = Commons::new(env.commons());
     let commons_file = commons.root().join(commons::MCP);
 
-    let survey = match mcp::survey(env, config, &commons_file) {
-        Ok(survey) => survey,
-        Err(e) => {
-            r.problem(e.to_string());
-            return EXIT_ERROR;
+    let survey = mcp::survey(env, config, &commons_file);
+    if !survey.problems.is_empty() {
+        // A Commons fault means there is no true answer to list; every fault
+        // is named — not just the first — and the command refuses.
+        for problem in &survey.problems {
+            r.problem(problem);
         }
-    };
+        return EXIT_ERROR;
+    }
     for skipped in &survey.skipped {
         r.problem(skipped.clone());
     }

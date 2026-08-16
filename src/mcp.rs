@@ -97,6 +97,10 @@ pub struct Survey {
     /// Per-Target reasons a config could not be read. Advisory: the Target is
     /// left exactly as found and every other Target still syncs.
     pub skipped: Vec<String>,
+    /// Faults in the Commons itself — an unparseable file, an unset
+    /// `${env:VAR}`. Any entry means the whole plan is unbuildable, so `sync`
+    /// stops before its first write (ADR-0007).
+    pub problems: Vec<String>,
 }
 
 impl Item {
@@ -138,17 +142,24 @@ impl std::fmt::Display for Error {
 
 /// Survey every MCP-capable Target against the Commons.
 ///
-/// An absent Commons file yields nothing: a family the user does not use is not a
-/// problem to report. Any failure — unparseable Commons file, unparseable agent
-/// config, an unset `${env:VAR}` — is returned as an error so that *no* file is
-/// written, rather than some agents being updated and others not.
-pub fn survey(env: &Env, config: &Config, commons_file: &Path) -> Result<Survey, Error> {
+/// An absent Commons file yields nothing: a family the user does not use is not
+/// a problem to report. A Commons fault — an unparseable file, an unset
+/// `${env:VAR}` — is *collected* into `problems` rather than returned at first
+/// hit, so one run names every fault (ADR-0007); `sync` writes nothing while
+/// any exist.
+pub fn survey(env: &Env, config: &Config, commons_file: &Path) -> Survey {
+    let mut survey = Survey::default();
     if !commons_file.is_file() {
-        return Ok(Survey::default());
+        return survey;
     }
 
-    let servers = read_commons(commons_file)?;
-    let mut survey = Survey::default();
+    let servers = match read_commons(commons_file) {
+        Ok(servers) => servers,
+        Err(e) => {
+            survey.problems.push(e.message);
+            return survey;
+        }
+    };
 
     for target in target::resolve(env, config) {
         let Some(agent) = target.agent else {
@@ -197,7 +208,18 @@ pub fn survey(env: &Env, config: &Config, commons_file: &Path) -> Result<Survey,
             }
 
             let tweaks = config.mcp_tweaks(name, &target.name);
-            let rendered = render(name, spec, dialect, env, tweaks)?;
+            let rendered = match render(name, spec, dialect, env, tweaks) {
+                Ok(rendered) => rendered,
+                Err(e) => {
+                    // Collected, not returned: a run with several unset
+                    // variables names them all. Deduplicated, because the same
+                    // server renders once per dialect.
+                    if !survey.problems.contains(&e.message) {
+                        survey.problems.push(e.message);
+                    }
+                    continue;
+                }
+            };
             let state = match existing_servers.get(name) {
                 None => State::Missing,
                 Some(current) if *current == rendered => State::Managed,
@@ -240,7 +262,7 @@ pub fn survey(env: &Env, config: &Config, commons_file: &Path) -> Result<Survey,
         }
     }
 
-    Ok(survey)
+    survey
 }
 
 /// Whether a Commons entry references the environment, and so renders to a value

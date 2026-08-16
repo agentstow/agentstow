@@ -60,39 +60,36 @@ pub fn run(env: &Env, config: &Config, r: &mut Reporter, as_json: bool) -> i32 {
     let commons_file = commons.root().join(commons::INSTRUCTIONS);
     let instruction_items = instructions::survey(env, config, &commons_file);
 
-    let mcp_survey = match mcp::survey(env, config, &commons.root().join(commons::MCP)) {
-        Ok(survey) => survey,
-        Err(e) => {
-            r.problem(e.to_string());
-            return EXIT_ERROR;
+    let mcp_survey = mcp::survey(env, config, &commons.root().join(commons::MCP));
+    let hook_survey = hooks::survey(env, config, &commons.family_dir(commons::HOOKS));
+    let rendered_survey = render::survey(env, config, &commons);
+
+    // A Commons fault means there is no true answer to report; every fault is
+    // named — not just the first — and the command refuses.
+    let commons_faults: Vec<&String> = mcp_survey
+        .problems
+        .iter()
+        .chain(&rendered_survey.problems)
+        .chain(&hook_survey.problems)
+        .collect();
+    if !commons_faults.is_empty() {
+        for problem in commons_faults {
+            r.problem(problem);
         }
-    };
+        for skipped in mcp_survey.skipped.iter().chain(&hook_survey.skipped) {
+            r.problem(skipped);
+        }
+        return EXIT_ERROR;
+    }
+
     // Reported and counted, but the rest of the report still prints: one
     // unreadable third-party file must never blank out a read-only answer.
-    for skipped in &mcp_survey.skipped {
+    for skipped in mcp_survey.skipped.iter().chain(&hook_survey.skipped) {
         r.problem(skipped.clone());
     }
     let mcp_items = mcp_survey.items;
-
-    let hook_survey = match hooks::survey(env, config, &commons.family_dir(commons::HOOKS)) {
-        Ok(survey) => survey,
-        Err(e) => {
-            r.problem(e.to_string());
-            return EXIT_ERROR;
-        }
-    };
-    for skipped in &hook_survey.skipped {
-        r.problem(skipped.clone());
-    }
     let hook_items = hook_survey.items;
-
-    let rendered_items = match render::survey(env, config, &commons) {
-        Ok(items) => items,
-        Err(e) => {
-            r.problem(e.to_string());
-            return EXIT_ERROR;
-        }
-    };
+    let rendered_items = rendered_survey.items;
 
     let actionable: usize = targets
         .iter()

@@ -783,3 +783,18 @@ model correction did come out of the review: registry rows flip
 `Skills::FanOut` → `Native` where an agent's own docs show unconditional
 user-level `~/.agents/skills` reading, because fan-out into a native reader
 produces duplicate skills.
+
+## 2026-08-16 — Two-phase sync: a skipped agent config still does not block
+
+Ticket 04 (ADR-0007) says any survey problem means "exit 1, nothing written".
+Interpreted "survey problem" as a fault in the *Commons* — an unparseable
+`mcp.json` or hook file, an unset `${env:VAR}`, an unreadable command file —
+because those make the plan itself unbuildable; they are now collected across
+every family and any one of them stops the run before its first write. An
+unparseable *agent* config keeps the 2026-08-13 decision unchanged: that
+Target is skipped and reported (exit 1) while every healthy Target still
+syncs. ADR-0007's named failure mode is a Commons fault leaving a half-synced
+machine; one third-party file agentstow promised never to touch denying
+service to every other agent is the failure mode the earlier decision exists
+to prevent, and three tests pin it. Consequences: `status` and `mcp list`
+refuse on a Commons fault naming *all* faults, not just the first.

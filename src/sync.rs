@@ -1,6 +1,15 @@
 //! `sync` — make every Target match the Commons.
+//!
+//! Two phases (ADR-0007). Phase 1 surveys every family read-only and collects
+//! **every** problem; if any exist they are all reported and the run exits
+//! having written nothing, so the user fixes one complete list rather than one
+//! error per run. Phase 2 executes the plan; a write failure there is reported
+//! and the remaining operations continue, because everything was resolved
+//! before the first write and an idempotent re-run converges. `--dry-run` is
+//! phase 1 plus the printed plan — one code path, so the preview cannot drift
+//! from what a real run would do.
 
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use crate::commons::{self, Commons};
 use crate::config::Config;
@@ -15,6 +24,75 @@ use crate::render;
 use crate::report::Reporter;
 use crate::target;
 use crate::{EXIT_CLEAN, EXIT_ERROR};
+
+/// Everything one run intends to do, surveyed and resolved before any write.
+struct Plan {
+    /// Advisory Commons scan issues, in family order. Never block the run.
+    warnings: Vec<String>,
+    /// Symlink-family surveys, in family then Target order.
+    links: Vec<LinkPlan>,
+    instructions: Vec<instructions::Item>,
+    mcp: mcp::Survey,
+    rendered: Vec<render::Item>,
+    hooks: hooks::Survey,
+    /// Blocking survey problems, collected across every family. Any entry:
+    /// phase 2 never runs.
+    problems: Vec<String>,
+}
+
+/// One Target directory's worth of symlink work.
+struct LinkPlan {
+    agent: String,
+    dir: String,
+    items: Vec<Item>,
+}
+
+impl Plan {
+    /// Phase 1: survey every family, read-only, collecting every problem.
+    fn build(env: &Env, config: &Config, commons: &Commons) -> Plan {
+        let targets = target::resolve(env, config);
+        let mut warnings = Vec::new();
+        let mut links = Vec::new();
+
+        for family in Family::ALL {
+            let scan = commons.scan(*family);
+            warnings.extend(scan.issues.iter().map(ToString::to_string));
+
+            for target in &targets {
+                let Some(dir) = target.fanout_dir(*family) else {
+                    continue;
+                };
+                let items = link::survey(&env.in_home(dir), commons.root(), &scan.entries);
+                links.push(LinkPlan {
+                    agent: target.name.clone(),
+                    dir: dir.to_string(),
+                    items,
+                });
+            }
+        }
+
+        let instructions =
+            instructions::survey(env, config, &commons.root().join(commons::INSTRUCTIONS));
+        let mut mcp = mcp::survey(env, config, &commons.root().join(commons::MCP));
+        let mut rendered = render::survey(env, config, commons);
+        let mut hooks = hooks::survey(env, config, &commons.family_dir(commons::HOOKS));
+
+        let mut problems = Vec::new();
+        problems.append(&mut mcp.problems);
+        problems.append(&mut rendered.problems);
+        problems.append(&mut hooks.problems);
+
+        Plan {
+            warnings,
+            links,
+            instructions,
+            mcp,
+            rendered: rendered.items,
+            hooks,
+            problems,
+        }
+    }
+}
 
 pub fn run(env: &Env, config: &Config, r: &mut Reporter, dry_run: bool) -> i32 {
     let commons = Commons::new(env.commons());
@@ -41,52 +119,40 @@ pub fn run(env: &Env, config: &Config, r: &mut Reporter, dry_run: bool) -> i32 {
         r.blank();
     }
 
+    // Phase 1 — survey everything before the first write.
+    let plan = Plan::build(env, config, &commons);
+    for warning in &plan.warnings {
+        r.warn(warning);
+    }
+
     let mut changes = 0usize;
-    let targets = target::resolve(env, config);
-
-    for family in Family::ALL {
-        let scan = commons.scan(*family);
-        for issue in &scan.issues {
-            r.warn(issue.to_string());
+    if plan.problems.is_empty() {
+        // Phase 2 — execute the plan (a dry run prints it instead). Hooks are
+        // written after MCP because Gemini keeps both in one settings file,
+        // and each family re-reads it before merging.
+        for link_plan in &plan.links {
+            changes += sync_target(
+                &link_plan.agent,
+                &link_plan.dir,
+                &link_plan.items,
+                env.home(),
+                r,
+                dry_run,
+            );
         }
-
-        for target in &targets {
-            let Some(dir) = target.fanout_dir(*family) else {
-                continue;
-            };
-            let target_dir = env.in_home(dir);
-            let items = link::survey(&target_dir, commons.root(), &scan.entries);
-            changes += sync_target(&target.name, dir, &items, env.home(), r, dry_run);
+        changes += sync_instructions(&plan.instructions, r, dry_run);
+        changes += sync_mcp(&plan.mcp, r, dry_run);
+        changes += sync_rendered(&plan.rendered, r, dry_run);
+        changes += sync_hooks(&plan.hooks, r, dry_run);
+    } else {
+        // A survey problem anywhere stops the whole run before its first
+        // write, so a config error can never leave a half-synced machine.
+        for problem in &plan.problems {
+            r.problem(problem);
         }
-    }
-
-    changes += sync_instructions(env, config, &commons, r, dry_run);
-
-    match sync_mcp(env, config, &commons, r, dry_run) {
-        Ok(n) => changes += n,
-        Err(e) => {
-            // Nothing has been written: an MCP failure stops the whole family
-            // rather than leaving some agents updated and others not.
-            r.problem(e.to_string());
-            return EXIT_ERROR;
-        }
-    }
-
-    match sync_rendered(env, config, &commons, r, dry_run) {
-        Ok(n) => changes += n,
-        Err(e) => {
-            r.problem(e.to_string());
-            return EXIT_ERROR;
-        }
-    }
-
-    // Hooks run after MCP because Gemini keeps both in one settings file, and
-    // each family re-reads it before merging.
-    match sync_hooks(env, config, &commons, r, dry_run) {
-        Ok(n) => changes += n,
-        Err(e) => {
-            r.problem(e.to_string());
-            return EXIT_ERROR;
+        // Skipped Targets are faults too; name every problem in the same run.
+        for skipped in plan.mcp.skipped.iter().chain(&plan.hooks.skipped) {
+            r.problem(skipped);
         }
     }
 
@@ -111,20 +177,13 @@ pub fn run(env: &Env, config: &Config, r: &mut Reporter, dry_run: bool) -> i32 {
 
 /// The rendered family: whole files generated for agents that cannot take a
 /// symlink, each carrying the Marker that makes it ours to replace.
-fn sync_rendered(
-    env: &Env,
-    config: &Config,
-    commons: &Commons,
-    r: &mut Reporter,
-    dry_run: bool,
-) -> Result<usize, render::Error> {
-    let items = render::survey(env, config, commons)?;
+fn sync_rendered(items: &[render::Item], r: &mut Reporter, dry_run: bool) -> usize {
     let noteworthy: Vec<&render::Item> = items
         .iter()
         .filter(|i| i.state != render::State::Managed)
         .collect();
     if noteworthy.is_empty() {
-        return Ok(0);
+        return 0;
     }
 
     r.line("rendered commands");
@@ -143,7 +202,7 @@ fn sync_rendered(
         .filter(|i| i.state.needs_change())
         .collect();
     if changing.is_empty() || dry_run {
-        return Ok(changing.len());
+        return changing.len();
     }
 
     let mut written = 0usize;
@@ -153,21 +212,13 @@ fn sync_rendered(
             Err(e) => r.problem(e.to_string()),
         }
     }
-    Ok(written)
+    written
 }
 
 /// The hooks family: command-hooks merged into each agent's hook arrays.
-fn sync_hooks(
-    env: &Env,
-    config: &Config,
-    commons: &Commons,
-    r: &mut Reporter,
-    dry_run: bool,
-) -> Result<usize, hooks::Error> {
-    let commons_dir = commons.family_dir(commons::HOOKS);
-    let survey = hooks::survey(env, config, &commons_dir)?;
+fn sync_hooks(survey: &hooks::Survey, r: &mut Reporter, dry_run: bool) -> usize {
     for skipped in &survey.skipped {
-        r.problem(skipped.clone());
+        r.problem(skipped);
     }
 
     let noteworthy: Vec<&hooks::Item> = survey
@@ -176,7 +227,7 @@ fn sync_hooks(
         .filter(|i| i.state != hooks::State::Managed)
         .collect();
     if noteworthy.is_empty() {
-        return Ok(0);
+        return 0;
     }
 
     r.line("hooks");
@@ -196,20 +247,12 @@ fn sync_hooks(
         .filter(|i| i.state.needs_change())
         .collect();
     if changing.is_empty() || dry_run {
-        return Ok(changing.len());
-    }
-
-    let mut by_file: Vec<(PathBuf, Vec<&hooks::Item>)> = Vec::new();
-    for item in changing.iter().copied() {
-        match by_file.iter_mut().find(|(path, _)| path == &item.path) {
-            Some((_, group)) => group.push(item),
-            None => by_file.push((item.path.clone(), vec![item])),
-        }
+        return changing.len();
     }
 
     let mut written = 0usize;
-    for (path, group) in &by_file {
-        match hooks::apply(path, group[0].root_key, group) {
+    for (path, group) in by_file(&changing) {
+        match hooks::apply(path, group[0].root_key, &group) {
             Ok(report) => {
                 written += group.len();
                 if report.exposed {
@@ -224,7 +267,7 @@ fn sync_hooks(
         }
     }
 
-    Ok(written)
+    written
 }
 
 /// A command, shortened for a report line. Never resolved.
@@ -238,19 +281,11 @@ fn short(command: &str) -> String {
 }
 
 /// The MCP family: one Commons file, rendered and key-merged per agent.
-fn sync_mcp(
-    env: &Env,
-    config: &Config,
-    commons: &Commons,
-    r: &mut Reporter,
-    dry_run: bool,
-) -> Result<usize, mcp::Error> {
-    let commons_file = commons.root().join(commons::MCP);
-    let survey = mcp::survey(env, config, &commons_file)?;
+fn sync_mcp(survey: &mcp::Survey, r: &mut Reporter, dry_run: bool) -> usize {
     // A config agentstow cannot parse is a real fault worth an exit code, but
     // it must not stop the Targets that are healthy.
     for skipped in &survey.skipped {
-        r.problem(skipped.clone());
+        r.problem(skipped);
     }
     let noteworthy: Vec<&mcp::Item> = survey
         .items
@@ -258,7 +293,7 @@ fn sync_mcp(
         .filter(|i| i.state != mcp::State::Managed)
         .collect();
     if noteworthy.is_empty() {
-        return Ok(0);
+        return 0;
     }
 
     r.line("mcp (mcp.json)");
@@ -277,26 +312,16 @@ fn sync_mcp(
         .filter(|i| i.state.needs_change())
         .collect();
     if changing.is_empty() || dry_run {
-        return Ok(changing.len());
-    }
-
-    // One write per config file, not per server: an agent may take more than
-    // one family in the same file.
-    let mut by_file: Vec<(PathBuf, Vec<&mcp::Item>)> = Vec::new();
-    for item in changing.iter().copied() {
-        match by_file.iter_mut().find(|(path, _)| path == &item.path) {
-            Some((_, group)) => group.push(item),
-            None => by_file.push((item.path.clone(), vec![item])),
-        }
+        return changing.len();
     }
 
     // One agent's write failing must not cancel the others: everything was
     // already resolved before any file was opened, so the remaining writes are
     // still correct. Each failure is reported and the run ends non-clean.
     let mut written = 0usize;
-    for (path, group) in &by_file {
+    for (path, group) in by_file(&changing) {
         let root_key = group[0].root_key;
-        match mcp::apply(path, root_key, group[0].format, group) {
+        match mcp::apply(path, root_key, group[0].format, &group) {
             Ok(report) => {
                 written += group.len();
                 if report.exposed {
@@ -311,19 +336,44 @@ fn sync_mcp(
         }
     }
 
-    Ok(written)
+    written
+}
+
+/// A trait for items that know which config file they belong to, so shared
+/// files receive one coherent write.
+trait InFile {
+    fn path(&self) -> &Path;
+}
+
+impl InFile for mcp::Item {
+    fn path(&self) -> &Path {
+        &self.path
+    }
+}
+
+impl InFile for hooks::Item {
+    fn path(&self) -> &Path {
+        &self.path
+    }
+}
+
+/// Group items by the config file they land in, preserving order. One write
+/// per file, not per item: an agent may take more than one entry — or more
+/// than one family — in the same file, and a write per item would clobber the
+/// previous one.
+fn by_file<'i, T: InFile>(items: &[&'i T]) -> Vec<(&'i Path, Vec<&'i T>)> {
+    let mut grouped: Vec<(&Path, Vec<&T>)> = Vec::new();
+    for item in items.iter().copied() {
+        match grouped.iter_mut().find(|(path, _)| *path == item.path()) {
+            Some((_, group)) => group.push(item),
+            None => grouped.push((item.path(), vec![item])),
+        }
+    }
+    grouped
 }
 
 /// The instructions family: one Commons file, three per-agent mechanisms.
-fn sync_instructions(
-    env: &Env,
-    config: &Config,
-    commons: &Commons,
-    r: &mut Reporter,
-    dry_run: bool,
-) -> usize {
-    let commons_file = commons.root().join(commons::INSTRUCTIONS);
-    let items = instructions::survey(env, config, &commons_file);
+fn sync_instructions(items: &[instructions::Item], r: &mut Reporter, dry_run: bool) -> usize {
     let noteworthy: Vec<&instructions::Item> = items
         .iter()
         .filter(|i| i.state != instructions::State::Linked)

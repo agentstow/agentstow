@@ -90,10 +90,22 @@ impl std::fmt::Display for Error {
     }
 }
 
+/// Everything one survey learned.
+#[derive(Debug, Default)]
+pub struct Survey {
+    pub items: Vec<Item>,
+    /// Faults in the Commons' command files. Any entry means the whole plan is
+    /// unbuildable, so `sync` stops before its first write (ADR-0007).
+    pub problems: Vec<String>,
+}
+
 /// Survey every Target that takes rendered commands.
-pub fn survey(env: &Env, config: &Config, commons: &Commons) -> Result<Vec<Item>, Error> {
+///
+/// A Commons command that cannot be read or rendered is collected into
+/// `problems` rather than returned at first hit, so one run names every fault.
+pub fn survey(env: &Env, config: &Config, commons: &Commons) -> Survey {
     let scan = commons.scan(crate::family::Family::Commands);
-    let mut items = Vec::new();
+    let mut survey = Survey::default();
 
     for target in target::resolve(env, config) {
         let Some(agent) = target.agent else {
@@ -105,10 +117,23 @@ pub fn survey(env: &Env, config: &Config, commons: &Commons) -> Result<Vec<Item>
         let dir = env.in_home(dir);
 
         for entry in &scan.entries {
-            let source = std::fs::read_to_string(&entry.path).map_err(|e| Error {
-                message: format!("cannot read {}: {e}", entry.path.display()),
-            })?;
-            let body = render(&source, format)?;
+            let source = match std::fs::read_to_string(&entry.path) {
+                Ok(source) => source,
+                Err(e) => {
+                    push_problem(
+                        &mut survey.problems,
+                        format!("cannot read {}: {e}", entry.path.display()),
+                    );
+                    continue;
+                }
+            };
+            let body = match render(&source, format) {
+                Ok(body) => body,
+                Err(e) => {
+                    push_problem(&mut survey.problems, e.message);
+                    continue;
+                }
+            };
             let path = dir.join(format!("{}.{}", entry.name, extension(format)));
 
             let state = match std::fs::read_to_string(&path) {
@@ -118,7 +143,7 @@ pub fn survey(env: &Env, config: &Config, commons: &Commons) -> Result<Vec<Item>
                 Ok(_) => State::Drifted,
             };
 
-            items.push(Item {
+            survey.items.push(Item {
                 target: target.name.clone(),
                 name: entry.name.clone(),
                 path,
@@ -146,7 +171,7 @@ pub fn survey(env: &Env, config: &Config, commons: &Commons) -> Result<Vec<Item>
                 if !ours {
                     continue;
                 }
-                items.push(Item {
+                survey.items.push(Item {
                     target: target.name.clone(),
                     name,
                     path,
@@ -157,7 +182,15 @@ pub fn survey(env: &Env, config: &Config, commons: &Commons) -> Result<Vec<Item>
         }
     }
 
-    Ok(items)
+    survey
+}
+
+/// Record one problem, deduplicated: every render Target reads the same
+/// Commons files, and one broken file is one fault, not one per agent.
+fn push_problem(problems: &mut Vec<String>, message: String) {
+    if !problems.contains(&message) {
+        problems.push(message);
+    }
 }
 
 /// Write or remove one rendered file.
