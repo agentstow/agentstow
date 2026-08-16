@@ -1,6 +1,6 @@
 # agentstow
 
-**One canonical .agents/ folder to power all your AI agents.**
+**One canonical .agents/ folder, fanned out to all your AI coding agents.**
 
 Website and docs: <https://agentstow.dev/>
 

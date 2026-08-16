@@ -1025,3 +1025,17 @@ collision-free on every registry, owns its .dev/.com/.org triple through
 2027, and names the mechanic (GNU Stow). dotagents.net and .cc are kept as
 defensive holdings and 301-redirect to agentstow.dev via Cloudflare Single
 Redirects; no code, package, or site identity changes.
+
+## 2026-08-16 — One tagline everywhere; the hero's "memory" claim removed
+
+Two taglines had drifted onto different surfaces: the site hero (en/zh) said
+"Canonical configs (skills, MCP, memory, etc.), fanned out…" while the README
+and GitHub description said "One canonical .agents/ folder to power(s) all
+your AI agents." The hero's "memory" contradicted the README's explicit "No
+memory sync" stance, and the GitHub copy carried a "to powers" typo. Unified
+on a hybrid — "One canonical .agents/ folder, fanned out to all your AI
+coding agents." — which keeps the "One" promise and the concrete .agents/
+anchor, uses the project's own fan-out verb, and narrows the audience to
+coding agents. Applied to README, GitHub description, and both site heroes
+and titles (zh: 一个规范的 .agents/ 目录，扇出到你所有的 AI 编程智能体);
+the longer Cargo/npm descriptions were already accurate and stand.

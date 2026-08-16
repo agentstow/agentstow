@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>agentstow — 配置只写一份（技能、MCP、记忆等），扇出到你所有的 AI 编程智能体</title>
+<title>agentstow — 一个规范的 .agents/ 目录，扇出到你所有的 AI 编程智能体</title>
 <meta name="description" content="位于 ~/.agents/ 的 Commons（共享配置区），把技能、指令、MCP 服务器、斜杠命令、子智能体和钩子同步到 Claude Code、Codex、opencode、Cursor、Windsurf、Roo 等智能体——字节可以完全相同处用符号链接，不能相同处用键级合并，并且没有状态文件。">
 <link rel="canonical" href="https://agentstow.dev/zh">
 <link rel="alternate" hreflang="en" href="https://agentstow.dev/">
@@ -50,7 +50,7 @@
 
   <section>
     <div class="shell">
-      <h1>配置只写一份（技能、MCP、记忆等），扇出到你所有的 AI 编程智能体。</h1>
+      <h1>一个规范的 .agents/ 目录，扇出到你所有的 AI 编程智能体。</h1>
       <p class="lede"><strong>位于 <code>~/.agents/</code> 这一规范目录的 Commons（共享配置区）保存着你共享的每一份配置的唯一真实副本</strong>——技能、指令、MCP 服务器、斜杠命令、子智能体、钩子。<code>agentstow sync</code> 把它扇出到你安装的每一个智能体，共支持十二个：字节可以完全相同的地方用符号链接，不能相同的地方用渲染后的键级合并。没有状态文件，将来也不会有。</p>
 
 <pre><span class="c"># Commons — 你共享的一切，只有这一份真实副本</span>
