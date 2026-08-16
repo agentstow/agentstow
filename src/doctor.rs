@@ -43,6 +43,16 @@ pub fn run(env: &Env, config: &Config, r: &mut Reporter) -> i32 {
         r.problem(commons::missing_message(commons.root()));
     }
 
+    // The agents family was `subagents/` before v2; a non-empty leftover is
+    // silently invisible to sync, so name it.
+    let pre_v2_agents = commons.root().join("subagents");
+    if std::fs::read_dir(&pre_v2_agents).is_ok_and(|mut d| d.next().is_some()) {
+        r.warn(format!(
+            "{} is no longer a family — the agents family reads agents/; rename the directory",
+            pre_v2_agents.display()
+        ));
+    }
+
     report_commons_override(env, config, r);
     report_agents(env, config, r);
 
@@ -123,14 +133,11 @@ fn report_commons(commons: &Commons, r: &mut Reporter) {
 /// never touched. agentstow can read filenames but not authorship, so it must
 /// not claim how many *tools* are present, only which entries are not its own.
 fn co_tenants(commons: &Commons) -> Vec<String> {
-    const OURS: &[&str] = &[
-        commons::SKILLS,
-        commons::COMMANDS,
-        commons::SUBAGENTS,
-        commons::HOOKS,
-        commons::INSTRUCTIONS,
-        commons::MCP,
-    ];
+    let ours: Vec<&str> = Family::ALL
+        .iter()
+        .map(|f| f.name())
+        .chain([commons::HOOKS, commons::INSTRUCTIONS, commons::MCP])
+        .collect();
 
     let Ok(read) = std::fs::read_dir(commons.root()) else {
         return Vec::new();
@@ -138,7 +145,7 @@ fn co_tenants(commons: &Commons) -> Vec<String> {
     let mut names: Vec<String> = read
         .flatten()
         .map(|e| e.file_name().to_string_lossy().into_owned())
-        .filter(|name| !OURS.contains(&name.as_str()))
+        .filter(|name| !ours.contains(&name.as_str()))
         .collect();
     names.sort();
     names

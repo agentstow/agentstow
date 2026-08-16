@@ -90,9 +90,9 @@ pub enum Commands {
     None,
 }
 
-/// How an agent gets subagents.
+/// How an agent gets agents.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Subagents {
+pub enum Agents {
     /// Symlink fan-out into this home-relative directory.
     FanOut(&'static str),
     /// No subagent surface agentstow targets in v1.
@@ -126,7 +126,7 @@ pub struct Agent {
     pub instructions: Instructions,
     pub mcp: Mcp,
     pub commands: Commands,
-    pub subagents: Subagents,
+    pub agents: Agents,
     pub hooks: Hooks,
 }
 
@@ -154,8 +154,8 @@ impl Agent {
                 Commands::FanOut(dir) => Some(dir),
                 _ => None,
             },
-            Family::Subagents => match self.subagents {
-                Subagents::FanOut(dir) => Some(dir),
+            Family::Agents => match self.agents {
+                Agents::FanOut(dir) => Some(dir),
                 _ => None,
             },
         }
@@ -168,7 +168,7 @@ impl Agent {
             ("instructions", describe_instructions(self.instructions)),
             ("mcp", describe_mcp(self.mcp)),
             ("commands", describe_commands(self.commands)),
-            ("subagents", describe_subagents(self.subagents)),
+            ("agents", describe_agents(self.agents)),
             ("hooks", describe_hooks(self.hooks)),
         ]
     }
@@ -208,10 +208,10 @@ fn describe_commands(c: Commands) -> String {
     }
 }
 
-fn describe_subagents(c: Subagents) -> String {
+fn describe_agents(c: Agents) -> String {
     match c {
-        Subagents::FanOut(dir) => format!("fan-out → {dir}"),
-        Subagents::None => "none".into(),
+        Agents::FanOut(dir) => format!("fan-out → {dir}"),
+        Agents::None => "none".into(),
     }
 }
 
@@ -238,7 +238,7 @@ pub const AGENTS: &[Agent] = &[
             dialect: McpDialect::Standard,
         },
         commands: Commands::FanOut(".claude/commands"),
-        subagents: Subagents::FanOut(".claude/agents"),
+        agents: Agents::FanOut(".claude/agents"),
         hooks: Hooks::KeyMerge {
             file: ".claude/settings.json",
             root_key: "hooks",
@@ -256,7 +256,7 @@ pub const AGENTS: &[Agent] = &[
             dialect: McpDialect::Codex,
         },
         commands: Commands::FanOut(".codex/prompts"),
-        subagents: Subagents::None,
+        agents: Agents::None,
         hooks: Hooks::KeyMerge {
             file: ".codex/hooks.json",
             root_key: "hooks",
@@ -277,7 +277,7 @@ pub const AGENTS: &[Agent] = &[
             dialect: McpDialect::Opencode,
         },
         commands: Commands::FanOut(".config/opencode/commands"),
-        subagents: Subagents::FanOut(".config/opencode/agents"),
+        agents: Agents::FanOut(".config/opencode/agents"),
         hooks: Hooks::None,
     },
     Agent {
@@ -288,7 +288,7 @@ pub const AGENTS: &[Agent] = &[
         // pi rejects MCP by design ("build CLI tools with READMEs").
         mcp: Mcp::None,
         commands: Commands::None,
-        subagents: Subagents::None,
+        agents: Agents::None,
         hooks: Hooks::None,
     },
     Agent {
@@ -300,7 +300,7 @@ pub const AGENTS: &[Agent] = &[
         instructions: Instructions::Symlink(".omp/agent/AGENTS.md"),
         mcp: Mcp::NativeViaDiscovery,
         commands: Commands::NativeViaDiscovery,
-        subagents: Subagents::None,
+        agents: Agents::None,
         hooks: Hooks::None,
     },
     Agent {
@@ -313,7 +313,7 @@ pub const AGENTS: &[Agent] = &[
         instructions: Instructions::None,
         mcp: Mcp::None,
         commands: Commands::None,
-        subagents: Subagents::None,
+        agents: Agents::None,
         hooks: Hooks::None,
     },
     Agent {
@@ -330,7 +330,7 @@ pub const AGENTS: &[Agent] = &[
         instructions: Instructions::None,
         mcp: Mcp::None,
         commands: Commands::None,
-        subagents: Subagents::None,
+        agents: Agents::None,
         hooks: Hooks::None,
     },
     Agent {
@@ -349,7 +349,7 @@ pub const AGENTS: &[Agent] = &[
             dir: ".gemini/commands",
             format: Format::Toml,
         },
-        subagents: Subagents::None,
+        agents: Agents::None,
         hooks: Hooks::KeyMerge {
             file: ".gemini/settings.json",
             root_key: "hooks",
@@ -368,7 +368,7 @@ pub const AGENTS: &[Agent] = &[
             dialect: McpDialect::Standard,
         },
         commands: Commands::FanOut(".cursor/commands"),
-        subagents: Subagents::None,
+        agents: Agents::None,
         hooks: Hooks::None,
     },
     Agent {
@@ -383,7 +383,7 @@ pub const AGENTS: &[Agent] = &[
             dialect: McpDialect::Windsurf,
         },
         commands: Commands::FanOut(".codeium/windsurf/global_workflows"),
-        subagents: Subagents::None,
+        agents: Agents::None,
         hooks: Hooks::None,
     },
     Agent {
@@ -394,7 +394,7 @@ pub const AGENTS: &[Agent] = &[
         // Roo's user-scope MCP lives in VS Code globalStorage — out of scope.
         mcp: Mcp::None,
         commands: Commands::FanOut(".roo/commands"),
-        subagents: Subagents::None,
+        agents: Agents::None,
         hooks: Hooks::None,
     },
     Agent {
@@ -409,7 +409,7 @@ pub const AGENTS: &[Agent] = &[
             dialect: McpDialect::Standard,
         },
         commands: Commands::None,
-        subagents: Subagents::None,
+        agents: Agents::None,
         hooks: Hooks::None,
     },
 ];

@@ -127,6 +127,13 @@ impl Config {
                         fanout.insert(*family, dir.to_string());
                     }
                 }
+                // The agents family was `subagents` before v2; the old key
+                // still works, with the new one winning when both appear.
+                if !fanout.contains_key(&Family::Agents)
+                    && let Some(dir) = table.get("subagents").and_then(|v| v.as_str())
+                {
+                    fanout.insert(Family::Agents, dir.to_string());
+                }
 
                 config.custom.push(CustomTarget {
                     name: name.to_string(),

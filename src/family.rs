@@ -20,32 +20,36 @@ pub enum Shape {
 pub enum Family {
     Skills,
     Commands,
-    Subagents,
+    Agents,
 }
 
 impl Family {
     /// Every fan-out family, in report order.
-    pub const ALL: &'static [Family] = &[Family::Skills, Family::Commands, Family::Subagents];
+    pub const ALL: &'static [Family] = &[Family::Skills, Family::Commands, Family::Agents];
 
     /// The Commons directory, and the name used in config and reports.
     pub fn name(&self) -> &'static str {
         match self {
             Family::Skills => "skills",
             Family::Commands => "commands",
-            Family::Subagents => "subagents",
+            Family::Agents => "agents",
         }
     }
 
     pub fn shape(&self) -> Shape {
         match self {
             Family::Skills => Shape::Directory,
-            Family::Commands | Family::Subagents => Shape::Markdown,
+            Family::Commands | Family::Agents => Shape::Markdown,
         }
     }
 
     /// Parse a family name from configuration. Unknown names are rejected
-    /// rather than guessed at.
+    /// rather than guessed at. `subagents`, the family's pre-v2 name, is
+    /// still accepted so existing configs keep working.
     pub fn from_name(name: &str) -> Option<Family> {
+        if name == "subagents" {
+            return Some(Family::Agents);
+        }
         Family::ALL.iter().copied().find(|f| f.name() == name)
     }
 }

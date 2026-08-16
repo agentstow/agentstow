@@ -50,6 +50,21 @@ fn a_custom_target_is_treated_like_any_other() {
 }
 
 #[test]
+fn the_pre_v2_subagents_config_key_still_works() {
+    let f = Fixture::new();
+    f.agent(".myagent");
+    f.commons_file("agents/reviewer.md", "review\n");
+    config(
+        &f,
+        "[custom.myagent]\nroot = \".myagent\"\nsubagents = \".myagent/agents\"\n",
+    );
+
+    f.run(&["sync"]).assert_clean();
+
+    assert!(f.is_symlink(".myagent/agents/reviewer.md"));
+}
+
+#[test]
 fn a_custom_target_that_is_not_installed_stays_inert() {
     let f = Fixture::new();
     f.commons_skill("research");

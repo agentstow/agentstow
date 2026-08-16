@@ -1,4 +1,4 @@
-//! `sync` for the markdown families — slash commands and subagents ride the
+//! `sync` for the markdown families — slash commands and agents ride the
 //! same link engine as skills, with per-agent destinations from the registry.
 
 mod common;
@@ -73,12 +73,9 @@ fn commands_do_not_reach_agents_that_need_rendering_or_have_no_surface() {
 }
 
 #[test]
-fn subagents_reach_only_claude_and_opencode() {
+fn agents_reach_only_claude_and_opencode() {
     let f = machine();
-    f.commons_file(
-        "subagents/reviewer.md",
-        "---\nname: reviewer\n---\n\nreview\n",
-    );
+    f.commons_file("agents/reviewer.md", "---\nname: reviewer\n---\n\nreview\n");
 
     f.run(&["sync"]).assert_clean();
 
@@ -95,7 +92,7 @@ fn every_family_is_reported_separately_in_status() {
     let f = machine();
     f.commons_skill("research");
     f.commons_file("commands/ship.md", "ship\n");
-    f.commons_file("subagents/reviewer.md", "review\n");
+    f.commons_file("agents/reviewer.md", "review\n");
 
     let out = f.run(&["status", "--json"]);
     out.assert_code(2);
@@ -111,7 +108,7 @@ fn every_family_is_reported_separately_in_status() {
 
     assert!(families.contains(&"skills"));
     assert!(families.contains(&"commands"));
-    assert!(families.contains(&"subagents"));
+    assert!(families.contains(&"agents"));
 }
 
 #[test]

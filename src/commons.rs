@@ -9,10 +9,7 @@ use std::path::{Path, PathBuf};
 
 use crate::family::{Family, Shape};
 
-/// Commons-relative directory for each fan-out family.
-pub const SKILLS: &str = "skills";
-pub const COMMANDS: &str = "commands";
-pub const SUBAGENTS: &str = "subagents";
+/// Commons-relative directory of the hook definitions.
 pub const HOOKS: &str = "hooks";
 /// Commons-relative path of the shared instructions file.
 pub const INSTRUCTIONS: &str = "AGENTS.md";

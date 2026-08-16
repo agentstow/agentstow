@@ -103,6 +103,18 @@ fn warns_about_a_dangling_symlink_in_the_commons() {
 }
 
 #[test]
+fn warns_about_a_non_empty_pre_v2_subagents_dir() {
+    let f = Fixture::new();
+    f.commons_file("subagents/reviewer.md", "review\n");
+
+    let out = f.run(&["doctor"]);
+
+    out.assert_clean()
+        .assert_stderr_has("no longer a family")
+        .assert_stderr_has("agents/");
+}
+
+#[test]
 fn warnings_do_not_make_the_run_fail() {
     let f = Fixture::new();
     f.commons_file("skills/README.md", "not a skill\n");
@@ -153,7 +165,7 @@ fn init_creates_the_commons_and_nothing_else() {
 
     assert!(f.commons().join("skills").is_dir());
     assert!(f.commons().join("commands").is_dir());
-    assert!(f.commons().join("subagents").is_dir());
+    assert!(f.commons().join("agents").is_dir());
     assert!(
         !f.commons().join("AGENTS.md").exists(),
         "an empty AGENTS.md would fan out as empty instructions"
