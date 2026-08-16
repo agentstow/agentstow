@@ -8,3 +8,7 @@ agentsync (the closest prior art) copies + renders + per-key-merges configs into
 - MCP sync (v2) cannot be symlinked (per-agent formats, embedded in files the agent also owns, e.g. Codex's `config.toml`). The statelessness principle constrains its design to stateless approaches (whole-owned-file generation, marker-delimited blocks) — never a per-key merge engine with ownership tracking.
 - The sole sanctioned edit to a user-owned file is the additive, idempotent `@~/.agents/AGENTS.md` import line in `~/.claude/CLAUDE.md` (Claude can't symlink its instructions because users keep Claude-specific content there).
 - Windows is out of scope for v1 (symlink creation requires Developer Mode/elevation); the link-materialization step is kept swappable in case a copy mode is ever demanded.
+
+---
+
+*Amended 2026-08-16: "the Store" is renamed **the Commons** (DECISIONS.md 2026-08-16); wording above is preserved as written. Windows shipped in 1.2.0.*

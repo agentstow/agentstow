@@ -1,62 +1,78 @@
 # agentstow
 
-Syncs AI coding agent configs from one canonical store to every installed agent — symlink fan-out for identical-bytes configs (skills, instructions, commands, subagents), rendered key-merge for entries in shared files (MCP, hooks), rendered whole files where formats differ.
+Syncs AI coding agent configs from the Commons — the canonical `~/.agents/` directory — to every installed agent: symlink fan-out for identical-bytes configs (skills, instructions, commands, agents), rendered key-merge for entries in shared files (MCP, hooks), rendered whole files where formats differ.
 
 ## Language
 
-**Store**:
-The canonical directory `~/.agents/` holding the single real copy of everything agentstow syncs. A shared commons, not agentstow's private directory: the path is an interop contract other agents hardcode (ADR-0004), and other tools keep their own files in it. Distinct from `~/.agentstow/`, the private config dir — the Store is meant to be committed and synced across machines, and machine-local state must stay out of it.
-_Avoid_: source, central repo, canonical source, agentstow's directory
+**Commons**:
+The canonical directory `~/.agents/` holding the single real copy of everything agentstow syncs. A shared commons, not agentstow's private directory: the path is an interop contract other agents hardcode (ADR-0004), and other tools keep their own files in it — agentstow is a tenant, never the landlord. Distinct from agentstow's private files (config in `$XDG_CONFIG_HOME/agentstow/`, lock in `$XDG_STATE_HOME/agentstow/`): the Commons is meant to be committed and synced across machines, and machine-local state must stay out of it.
+_Avoid_: store, source, central repo, canonical source, agentstow's directory
 
 **Target**:
 One agent's config surface that receives fan-out (e.g. `~/.claude/skills/`).
 _Avoid_: destination, agent dir
 
 **Fan-out**:
-The mechanism: one store entry materialized into every target as a symlink. Always **per entry**, never a single symlink standing in for the whole target directory (ADR-0005) — a target holds one link per store entry, so Variants have a slot and content the agent owns is left alone.
+The mechanism: one Commons entry materialized into every target as a symlink. Always **per entry**, never a single symlink standing in for the whole target directory (ADR-0005) — a target holds one link per Commons entry, so Variants have a slot and content the agent owns is left alone.
 _Avoid_: distribution, propagation
 
 **Native (agent)**:
-An agent that reads the store directly and therefore needs no fan-out (e.g. opencode scans `~/.agents/skills/` itself). A capability the registry claims only when it holds unconditionally: an agent that *could* read the store after the user edits its config is not Native, because agentstow does not write that config.
+An agent that reads the Commons directly and therefore needs no fan-out (e.g. opencode scans `~/.agents/skills/` itself). A capability the registry claims only when it holds unconditionally: an agent that *could* read the Commons after the user edits its config is not Native, because agentstow does not write that config.
 _Avoid_: zero-config agent
 
 **Co-tenant**:
-An entry at the Store root that is not one of agentstow's families — another tool's file in a directory agentstow shares (e.g. the `skills` CLI's `.skill-lock.json`). Named by `doctor`, never counted as tools (filenames carry no authorship), never reported by `status`, never touched. Not a Foreign, which is about a *target*; not an issue.
+An entry at the Commons root that is not one of agentstow's families — another tool's file in a directory agentstow shares (e.g. the `skills` CLI's `.skill-lock.json`). Named by `doctor`, never counted as tools (filenames carry no authorship), never reported by `status`, never touched. Not a Foreign, which is about a *target*; not an issue.
 _Avoid_: foreign, stray, unmanaged, junk
 
+**Protocol surface**:
+A `.agents` Protocol path at the Commons root that agentstow recognizes by name but does not manage (`tasks/`, `memories/`, `models.json`, `system-prompt.md`). A named kind of Co-tenant: `doctor` attributes it to the protocol instead of listing it anonymously, and it becomes a family only when real consumers exist to fan out to.
+_Avoid_: extension, unknown surface
+
 **Variant**:
-A real directory (or file) in a target that intentionally shadows the store copy for that agent alone, while the store copy serves every other agent. First-class and preserved, never clobbered.
+A real directory (or file) in a target that intentionally shadows the Commons copy for that agent alone, while the Commons copy serves every other agent. First-class and preserved, never clobbered.
 _Avoid_: override, fork, conflict, drift
 
 **Adopt**:
-Absorbing an existing real file/dir from a target into the store, leaving a link behind (GNU Stow's `--adopt`).
-_Avoid_: import, migrate
+Taking a path under agentstow's management with one verb; where the path lives picks the mechanic. A real file/dir in a target is absorbed into the Commons, leaving a link behind (GNU Stow's `--adopt`). A path with a durable home elsewhere — inside a git repo — becomes a Sourced entry. Any other outside path is copied in, and the original is no longer consulted. Paths already inside the Commons refuse: they are already home.
+_Avoid_: import, migrate, add
+
+**Sourced (entry)**:
+A Commons entry that is a symlink out to its **Source** — an outside path, typically in a git repo, holding the content's single real copy. The Commons keeps the pointer, the Source keeps the truth, and edits at the Source reach every agent through the Commons. The mirror image of an ordinary entry, where the Commons itself holds the real copy. (Neighboring tools use "source" for the *canonical* side — chezmoi, agentsync, dotagents; here the Source is the outside home an entry points to.)
+_Avoid_: external, linked, repo-backed
+
+**Revert**:
+Removing everything agentstow put into one target — links, merged MCP and hook keys, Markers — as a deliberate offboarding act. Refused while the target is still enabled, so a later sync cannot silently redo what revert undid.
+_Avoid_: uninstall, reset, delete
 
 **Foreign**:
-A symlink, file, or MCP server entry in a target that agentstow does not own (doesn't resolve into the store / name not in the store). Never touched, listed by `status`.
+A symlink, file, or MCP server entry in a target that agentstow does not own (doesn't resolve into the Commons / name not in the Commons). Never touched, listed by `status`.
 _Avoid_: unmanaged, external, orphan
 
 **Conflict**:
-A Foreign *file* occupying a destination agentstow would otherwise write — reported with the remedy named, never overwritten. A kind of Foreign, and never a Variant (a Variant shadows a Store entry deliberately; a Conflict blocks one).
+A Foreign *file* occupying a destination agentstow would otherwise write — reported with the remedy named, never overwritten. A kind of Foreign, and never a Variant (a Variant shadows a Commons entry deliberately; a Conflict blocks one).
 _Avoid_: clash, collision, blocked
 
 **Render**:
-Translating a store MCP server into one agent's native format and key-merging it into that agent's config file. The non-symlink sync path, used only where identical bytes are impossible.
+Translating a Commons MCP server into one agent's native format and key-merging it into that agent's config file. The non-symlink sync path, used only where identical bytes are impossible.
 _Avoid_: compile, generate, apply
 
 **Managed (server)**:
-An MCP server entry whose name appears in the store — agentstow owns that entry in every targeted config, and the store wins on sync.
+An MCP server entry whose name appears in the Commons — agentstow owns that entry in every targeted config, and the Commons wins on sync.
 _Avoid_: owned, tracked
 
+**Disabled (server)**:
+A Managed server whose Commons definition carries `"disabled": true` — defined but rendered nowhere. The definition and its rules are kept, so enabling restores it everywhere without retyping. Distinct from a disabled *target*, which removes an agent from management entirely.
+_Avoid_: paused, off
+
 **Tweak**:
-A per-agent addition merged into one agent's rendering of a server (e.g. Codex's `startup_timeout_sec`), declared in `agentstow.toml`, never in the store file.
+A per-agent addition merged into one agent's rendering of a server (e.g. Codex's `startup_timeout_sec`), declared in `agentstow.toml`, never in the Commons file.
 _Avoid_: override, extra, extension
 
 **Import-line**:
 The instructions mechanism for agents whose file must stay user-owned: ensure one additive, idempotent import line exists (Claude's `@~/.agents/AGENTS.md` in `CLAUDE.md`). The sole sanctioned edit to a user file outside MCP rendering.
 
 **Rules-dir link**:
-The instructions mechanism for agents that glob a rules directory: drop a symlink to the store `AGENTS.md` into it (Roo's `~/.roo/rules/`).
+The instructions mechanism for agents that glob a rules directory: drop a symlink to the Commons `AGENTS.md` into it (Roo's `~/.roo/rules/`).
 
 **Marker**:
 The one-line comment agentstow places in every rendered whole file, making the file recognizable as agentstow's without a state file. Marked = ours; unmarked = foreign.

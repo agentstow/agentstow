@@ -15,3 +15,7 @@ Deliberate sharing keeps a home: `adopt` makes an agent's own skill a Store entr
 - **One mechanism, no per-agent `link-mode`.** An opt-in directory mode for agents that happen to have no variants today would double every state in `link.rs`, force `adopt` to refuse on some agents, and leave a migration no command performs the first time such an agent gains a variant. Being variant-free is a property of a machine at a moment, not of an agent.
 - **`sync` stays a step users run**, and the instruction to run it after installing a skill stays in the documentation. Agents that read the Store natively (opencode, oh-my-pi, and Hermes once `skills.external_dirs` is set) get instant propagation for free; the rest trade it for the three properties above.
 - **A target directory may hold three kinds of thing** — our links, deliberate Variants, and content that is simply the agent's own. `link::survey` classifies only the first two; a real object at a name the Store does not have is not a Variant of anything and is left unreported, which is why `.system/` and `.hub/` are invisible rather than flagged.
+
+---
+
+*Amended 2026-08-16: "the Store" is renamed **the Commons** (DECISIONS.md 2026-08-16); wording above is preserved as written. `adopt` is generalized in v2 to one verb with three mechanics (ADR-0006) — the absorb mechanic described here is unchanged, and the "removes adopt's destination" argument stands.*

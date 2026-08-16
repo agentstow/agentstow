@@ -11,3 +11,7 @@ Ownership stays stateless per ADR-0001, by **name-identity**: a server name pres
 - Writes are direct read-modify-write with atomic rename, touching only owned entries. Racing a live agent session on a shared file (notably `~/.claude.json`) can lose one side's write; documented as "don't sync mid-session" rather than bought off with agent-CLI delegation.
 - Command surface is deliberately minimal: `mcp list`, `mcp adopt`, `mcp remove`. No `mcp add` — the store file is a standard, documented format; adding a server is editing `mcp.json`.
 - pi is excluded (rejects MCP by design); oh-my-pi is native-via-discovery (it reads other agents' MCP configs, so writing to it would double-configure).
+
+---
+
+*Amended 2026-08-16: "the store" is renamed **the Commons**, and the config file moved to `$XDG_CONFIG_HOME/agentstow/agentstow.toml` (DECISIONS.md 2026-08-16); wording above is preserved as written. v2 adds `mcp enable|disable` as sugar over a `"disabled": true` key in the Commons file; the absence of `mcp add` stands.*

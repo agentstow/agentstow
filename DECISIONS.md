@@ -663,3 +663,123 @@ previews on non-production branches). `deploy-site.yml` is deleted, the
 the workflow's smoke checks moved into site/DEPLOY.md §Verifying. The
 2026-08-13 finding that connecting is dashboard-only still holds — the
 connection was made by hand in the dashboard. Commit 5a817e7.
+
+## 2026-08-16 — The Store is renamed the Commons
+
+Settled after three naming sessions ("canonical directory", then
+Store/Commons/DotAgents/Canonical head-to-heads) with the neighbors' source
+read for evidence. Neither adjacent tool uses "Store": iannuttall/dotagents
+says `canonicalRoot` in code and "canonical .agents folder" in prose;
+agentsync says "canonical source" (from chezmoi), package `internal/source`,
+struct `Canonical`. Their shared noun "source" is a three-way homonym — the
+central dir (agentsync), the canonical end of one link (dotagents), and the
+*outside* home of a Sourced entry (here) — which retroactively justifies this
+glossary's ban on "source"/"canonical source" for the central dir.
+"Canonical" itself fails as a name: it is an adjective, decays into "the
+canonical directory" in prose, and the output-vocabulary test could not
+distinguish the term from ordinary adjectival use. "DotAgents" is five other
+projects' proper name. **Commons** won on the merits: it is ADR-0004's own
+word promoted to term of art, it names the fact most at risk of being
+forgotten (shared-not-owned; both neighbors assume they own their directory —
+co-tenancy is agentstow's actual differentiator), it compounds cleanly, and
+it dissolves the Store/Sourced phonetic rub. Costs accepted: ~387 code
+occurrences, ~38 message lines, the docs sweep, and one-line amendment notes
+on ADR-0001..0005, whose historical wording stays as written. The word
+"canonical" remains free for ordinary description — the README gloss is "the
+Commons — the canonical `~/.agents/` directory". Sourced/Source keeps its
+name despite the ecosystem homonym; its glossary entry now says so.
+
+## 2026-08-16 — Private files move to XDG; ~/.agentstow is retired (hard cut)
+
+This reverses, by human call, ADR-0004's third settled question, which
+rejected the XDG split as "trading one dotdir for two." The new weighting:
+users version `~/.config` in dotfiles repos but not machine-generated state,
+and state should be wipeable without losing configuration — so config goes to
+`$XDG_CONFIG_HOME/agentstow/` (default `~/.config/agentstow/`) and the lock,
+agentstow's entire state, to `$XDG_STATE_HOME/agentstow/` (default
+`~/.local/state/agentstow/`). The lock is a runtime file by XDG purism, but
+`XDG_RUNTIME_DIR` is routinely unset on macOS; the state dir is the
+deliberate simplification. Resolution is XDG-style on every platform
+including Windows (explicit `XDG_*` if set, else derived from the overridable
+home) — git's precedent, zero new dependencies, no new env vars. The cut is
+hard: the legacy `~/.agentstow/` is ignored, `doctor` names a stray one and
+states the move, and the known hazard (a silently ignored legacy config
+re-enables disabled targets) was accepted with eyes open over a fallback-read
+window. The Commons itself never moves — ADR-0004's "a commons that resolves
+differently per tool is not a commons" reasoning is untouched. Because the
+old config location stops working, v2 ships as 2.0.0.
+
+## 2026-08-16 — The .agents Protocol is adopted with two reservations
+
+The ".agents Protocol" (dotagentsprotocol.com, draft 2026-02-24) was
+verified: real, one author, one implementing app (his own), spec dormant
+since March, no license file, casing that conflicts with the installed base.
+What is independently real is narrower: `.agents/skills/<name>/SKILL.md`
+(uppercase) is natively read by opencode at user level and by
+Codex/Cursor/Cline/Amp/Gemini CLI/Copilot at project level — which the
+Commons already implements byte-for-byte. Full adoption was on the table and
+declined for two reasons that became the recorded reservations: **casing**
+(lowercase `agents.md`/`skill.md` would break skills on every case-sensitive
+system for every mainstream agent, and would desert the real `AGENTS.md`
+standard — where the draft and the installed base disagree, the installed
+base wins) and **secrets** (`models.json` carries provider keys, which do not
+belong in a committed commons — ADR-0002's posture). What is adopted:
+`subagents/` → `agents/` (the protocol's name, also matching both fan-out
+destinations; `subagents` survives as a config-key alias and `doctor` hints
+when a non-empty old dir exists), and the protocol's surfaces (`tasks/`,
+`memories/`, `models.json`, `system-prompt.md`) become named Protocol
+surfaces in `doctor` — attributed, never touched, a family only when a real
+consumer exists. `mcp.json` already conforms. Revisit on evidence of real
+adoption.
+
+## 2026-08-16 — Two verbs join the surface: revert, and mcp enable/disable
+
+**revert <agent>** exists because disabling a target orphans its fanned-out
+links forever — sync never visits again, no state remembers it was managed,
+and `mcp remove` skips it — and hand-editing merged config files is exactly
+the surgery `mcp remove` was created to avoid. It removes everything
+agentstow put into one target (links, merged MCP/hook keys, Markers) and
+**refuses unless the target is already disabled**, printing the exact
+`targets.<name> = false` line: the forced order makes the intent durable in
+config before the teardown, so a later sync cannot silently redo what revert
+undid, and revert never edits the user's config as a side effect.
+**mcp enable|disable** exists because JSON has no comments: parking a server
+means deleting and retyping its definition. The state is `"disabled": true`
+on the entry in the Commons `mcp.json` — the file remains the interface, the
+verbs are sugar, the property travels with the definition across machines.
+Disable acts immediately under the lock like `mcp remove` (managed entries
+removed everywhere, definition and rules kept); a disabled server renders
+nowhere, lists as `(disabled)`, and counts as clean.
+
+## 2026-08-16 — What v2 deliberately does not adopt from its neighbors
+
+GNU Stow (manual-verified, 2.4.1) and agentsync were enumerated end to end;
+the adoptions are two-phase sync (ADR-0007), `--dry-run` on adopt, revert,
+enable/disable, and an output-vocabulary test that enforces CONTEXT.md's
+avoid-lists in user-facing strings. The refusals, each on its own grounds: no
+`remove <entry>` verb (`rm` + sync's prune is the interface; `mcp remove`
+stays the exception because its entries hide in shared rendered files); no
+target enable/disable verb (the config file is the interface; revert's
+refusal prints the line); no bulk `--all` path adopt (init's report + a shell
+loop; one Variant refusal mid-batch would reopen partial-failure semantics
+kept deliberately atomic); no color, ever (plain text and the stdout/stderr
+split are the interface — also the simplest NO_COLOR compliance); no
+verbosity levels (a mysterious decision wants a better report line, not a
+trace flag); no `--ignore/--defer/--override` patterns (Variants, disabling,
+and Co-tenancy are the structural answers; pattern flags are a model
+admitting it does not fit); no CLI flags for the env vars (redirecting the
+tool is a machine-level fact — the vars are promoted to documented interface
+instead); `sync --dry-run` keeps exit 0 (status is the drift gate — one
+command per question); no `explain` (doctor + status + the printed plan); no
+LSP family (no consumer in the registry — same bar as the protocol
+surfaces); no undo/backups (an undo journal is state, and ADR-0001 says no
+state file, permanently — refusals-before-writes, two-phase abort-clean,
+dry-run, idempotent re-runs, and a git-versioned Commons are the undo
+story); and project scope (`./.agents/`) is a reasoned non-goal — agents
+already read project-level `.agents/skills` natively, so a project agentstow
+would manage a directory its consumers handle themselves; the one holdout
+(Claude Code reads `.claude/skills/`) is a per-project symlink away. One
+model correction did come out of the review: registry rows flip
+`Skills::FanOut` → `Native` where an agent's own docs show unconditional
+user-level `~/.agents/skills` reading, because fan-out into a native reader
+produces duplicate skills.

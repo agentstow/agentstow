@@ -10,3 +10,7 @@ Everything agentstow writes must be recognizable as agentstow's on a later run w
 
 - Hooks are in scope only as declarations: agentstow writes hook definitions but **never trust metadata** (Codex's `[hooks.state]` sha256 entries) — the agent re-prompts the user to trust changed hooks, keeping execution approval human. Hook scripts themselves are not managed; store commands must use agent-agnostic paths.
 - No mechanism exists to detect an orphan whose identity was destroyed (a store MCP entry hand-deleted, a marker comment hand-stripped). `status` reports such leftovers as foreign; that is the accepted price of statelessness.
+
+---
+
+*Amended 2026-08-16: "the store" is renamed **the Commons** (DECISIONS.md 2026-08-16); wording above is preserved as written.*

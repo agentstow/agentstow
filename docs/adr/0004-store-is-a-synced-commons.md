@@ -12,3 +12,7 @@
 - **Dot-prefixed means different things at different layers.** Inside a family directory it is a fault (`Issue::DotPrefixed`) — a skill that was meant to be fanned out and silently will not be. At the Store root it is ordinary neighbour bookkeeping, which is exactly what a lock file should look like. The two never share vocabulary in output.
 - **`AGENTSTOW_HOME` can now cause silent divergence, so it warns.** Relocating the Store cannot relocate the path a Native agent hardcodes. When the variable points somewhere other than `<home>/.agents` and a Native agent is installed, `doctor` names that agent and says it will not see this Store. The override stays: tests depend on it and multi-Store use is legitimate.
 - **A registry row must be true unconditionally.** Hermes can read the Store natively, but only after a user edits `skills.external_dirs` — configuration agentstow does not write. Its row is `Skills::FanOut`, the mechanism that always works, rather than a `Native` claim that would be false on an unconfigured machine.
+
+---
+
+*Amended 2026-08-16: "the Store" is renamed **the Commons** — this ADR's own word promoted to term of art. The third settled question is partially reversed: tool config now lives in `$XDG_CONFIG_HOME/agentstow/` and the lock in `$XDG_STATE_HOME/agentstow/`; `~/.agentstow/` is retired (DECISIONS.md 2026-08-16). The commons path `~/.agents/`, its generic name, and the "no XDG for the commons" reasoning are unchanged. Wording above is preserved as written.*
