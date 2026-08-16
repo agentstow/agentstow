@@ -276,6 +276,38 @@ fn says_nothing_about_other_tools_when_there_are_none() {
 }
 
 #[test]
+fn protocol_surfaces_are_attributed_not_anonymous() {
+    // `.agents` Protocol paths are a named kind of Co-tenant: listed under
+    // their own heading, never counted as issues, never touched.
+    let f = Fixture::new();
+    f.commons_file("tasks/daily/task.md", "kind: task\n");
+    f.commons_file("models.json", "{}");
+    f.commons_file(".skill-lock.json", "{}");
+
+    let out = f.run(&["doctor"]);
+
+    out.assert_clean()
+        .assert_stdout_has(".agents Protocol surfaces:")
+        .assert_stdout_has("  models.json")
+        .assert_stdout_has("  tasks")
+        .assert_stdout_has("Other tools in the Commons")
+        .assert_stdout_has(".skill-lock.json")
+        .assert_no_output_contains("issue");
+}
+
+#[test]
+fn absent_protocol_surfaces_are_not_mentioned() {
+    let f = Fixture::new();
+    f.commons_skill("research");
+    let before = f.tree();
+
+    f.run(&["doctor"])
+        .assert_clean()
+        .assert_stdout_lacks("Protocol surfaces");
+    assert_eq!(before, f.tree(), "doctor must not create protocol surfaces");
+}
+
+#[test]
 fn a_relocated_commons_warns_that_native_agents_will_not_see_it() {
     // AGENTSTOW_HOME moves agentstow's Commons but cannot move the path a Native
     // agent hardcodes, so the two diverge in silence unless doctor says so.

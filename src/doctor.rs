@@ -127,7 +127,14 @@ fn report_commons(commons: &Commons, r: &mut Reporter) {
         r.blank();
     }
 
-    let others = co_tenants(commons);
+    let (protocol, others) = neighbours(commons);
+    if !protocol.is_empty() {
+        r.line(".agents Protocol surfaces:");
+        for name in &protocol {
+            r.line(format!("  {name}"));
+        }
+        r.blank();
+    }
     if !others.is_empty() {
         r.line("Other tools in the Commons:");
         for name in &others {
@@ -199,7 +206,13 @@ fn sourced_entries(commons: &Commons) -> Vec<Sourced> {
     acc
 }
 
-/// Names at the Commons root that are not agentstow's own families.
+/// `.agents` Protocol paths recognized by name but not managed — a named kind
+/// of Co-tenant (DECISIONS.md 2026-08-16). One becomes a family only when a
+/// real consumer exists to fan out to.
+const PROTOCOL_SURFACES: &[&str] = &["tasks", "memories", "models.json", "system-prompt.md"];
+
+/// Names at the Commons root that are not agentstow's own families, split into
+/// Protocol surfaces (attributed) and other co-tenants (anonymous).
 ///
 /// The Commons is a shared commons, not agentstow's private directory (ADR-0004):
 /// opencode, oh-my-pi and hermes read `~/.agents/` themselves, and the `skills`
@@ -207,7 +220,7 @@ fn sourced_entries(commons: &Commons) -> Vec<Sourced> {
 /// fault — so these are named and never counted, never called an issue, and
 /// never touched. agentstow can read filenames but not authorship, so it must
 /// not claim how many *tools* are present, only which entries are not its own.
-fn co_tenants(commons: &Commons) -> Vec<String> {
+fn neighbours(commons: &Commons) -> (Vec<String>, Vec<String>) {
     let ours: Vec<&str> = Family::ALL
         .iter()
         .map(|f| f.name())
@@ -215,15 +228,16 @@ fn co_tenants(commons: &Commons) -> Vec<String> {
         .collect();
 
     let Ok(read) = std::fs::read_dir(commons.root()) else {
-        return Vec::new();
+        return (Vec::new(), Vec::new());
     };
-    let mut names: Vec<String> = read
+    let (mut protocol, mut others): (Vec<String>, Vec<String>) = read
         .flatten()
         .map(|e| e.file_name().to_string_lossy().into_owned())
         .filter(|name| !ours.contains(&name.as_str()))
-        .collect();
-    names.sort();
-    names
+        .partition(|name| PROTOCOL_SURFACES.contains(&name.as_str()));
+    protocol.sort();
+    others.sort();
+    (protocol, others)
 }
 
 /// Warn when a relocated Commons is invisible to the agents that read the
