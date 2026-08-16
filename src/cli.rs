@@ -32,6 +32,9 @@ pub enum Command {
     Adopt {
         /// The real file or directory to take into the Commons.
         path: String,
+        /// Name the mechanic and report every action without touching anything.
+        #[arg(long)]
+        dry_run: bool,
     },
     /// Report what is in sync, what is not, and what is not ours.
     Status {

@@ -1,16 +1,24 @@
-//! `adopt` — absorb an existing config into the Commons and leave a link behind.
+//! `adopt` — one verb; where the path lives picks the mechanic (ADR-0006).
 //!
-//! Three cases, and no `--force`. Refusing to merge a divergence by hand is the
-//! point: silently discarding one side of it is exactly the failure mode this
-//! tool is defined against.
+//! This slice implements the dispatch skeleton, the Commons guard, and the
+//! absorb mechanic: a real file or directory in a Target surface moves into
+//! the Commons, leaves a relative link behind, and fans out to every installed
+//! agent through the same machinery `sync` uses — so a sync immediately after
+//! has nothing to say. External paths still refuse; the Source and Copy
+//! mechanics come next.
+//!
+//! No `--force`, ever. Refusing to merge a divergence by hand is the point:
+//! silently discarding one side of it is exactly the failure mode this tool is
+//! defined against.
 
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use crate::commons::{self, Commons};
+use crate::commons::{self, Commons, Entry};
 use crate::config::Config;
 use crate::env::Env;
-use crate::family::Family;
+use crate::family::{Family, Shape};
+use crate::instructions;
 use crate::link;
 use crate::lock;
 use crate::registry::Instructions;
@@ -18,7 +26,7 @@ use crate::report::Reporter;
 use crate::target;
 use crate::{EXIT_CLEAN, EXIT_ERROR};
 
-pub fn run(env: &Env, config: &Config, r: &mut Reporter, raw_path: &str) -> i32 {
+pub fn run(env: &Env, config: &Config, r: &mut Reporter, raw_path: &str, dry_run: bool) -> i32 {
     let commons = Commons::new(env.commons());
     if !commons.exists() {
         r.problem(commons::missing_message(commons.root()));
@@ -29,6 +37,19 @@ pub fn run(env: &Env, config: &Config, r: &mut Reporter, raw_path: &str) -> i32 
 
     if !path.exists() && fs::symlink_metadata(&path).is_err() {
         r.problem(format!("{} does not exist", path.display()));
+        return EXIT_ERROR;
+    }
+
+    // The Commons guard, ahead of every other classification — including the
+    // symlink refusal. The Commons is meant to be committed, and once the git
+    // walk-up lands, a `.git` at its root would classify every entry as
+    // repo-backed: adopt would replace the entry with a link to itself,
+    // destroying it. Nothing inside the Commons is ever adoptable.
+    if path.starts_with(link::normalize(env.commons())) {
+        r.problem(format!(
+            "{} is already in the Commons — nothing to adopt",
+            path.display()
+        ));
         return EXIT_ERROR;
     }
 
@@ -72,6 +93,47 @@ pub fn run(env: &Env, config: &Config, r: &mut Reporter, raw_path: &str) -> i32 
         return EXIT_ERROR;
     }
 
+    // The Commons already holding an identical copy means relink, not move.
+    let identical = destination.exists();
+
+    let adoption = Adoption {
+        env,
+        config,
+        commons: &commons,
+        placement: &placement,
+        origin: &path,
+        destination: &destination,
+    };
+
+    // A dry run classifies exactly like a real run — every refusal above
+    // already answered in the same words with the same exit code — and stops
+    // here: read-only, lockless, the mechanic named, every action in "would"
+    // tense.
+    if dry_run {
+        r.line("dry run — no changes will be made");
+        r.blank();
+        r.line(format!(
+            "absorb: {file_name} from {} into the Commons ({})",
+            placement.target,
+            placement.family_label()
+        ));
+        if identical {
+            r.line(format!(
+                "  would remove {} — identical to the Commons copy",
+                path.display()
+            ));
+        } else {
+            r.line(format!("  would move {} into the Commons", path.display()));
+        }
+        r.line(format!(
+            "  would leave a link at {} → {}",
+            path.display(),
+            canonical_text(&path, &destination).display()
+        ));
+        fan_out(&adoption, r, true);
+        return EXIT_CLEAN;
+    }
+
     let _lock = match lock::acquire(env.state_dir(), lock::timeout(env)) {
         Ok(guard) => guard,
         Err(e) => {
@@ -80,18 +142,19 @@ pub fn run(env: &Env, config: &Config, r: &mut Reporter, raw_path: &str) -> i32 
         }
     };
 
-    if destination.exists() {
-        return relink(&path, &destination, &file_name, &placement.target, r);
+    let code = if identical {
+        relink(&path, &destination, &file_name, &placement.target, r)
+    } else {
+        move_in(&path, &destination, &file_name, &placement, r)
+    };
+    if code != EXIT_CLEAN {
+        return code;
     }
 
-    move_in(
-        &path,
-        &destination,
-        &file_name,
-        &placement.family,
-        &placement.target,
-        r,
-    )
+    // Absorb finishes the job: the entry reaches every installed agent now,
+    // so a sync immediately after has nothing to do.
+    fan_out(&adoption, r, false);
+    r.verdict()
 }
 
 /// The Commons does not have this name: move it in, leave a link behind.
@@ -99,8 +162,7 @@ fn move_in(
     path: &Path,
     destination: &Path,
     file_name: &str,
-    family: &str,
-    target: &str,
+    placement: &Placement,
     r: &mut Reporter,
 ) -> i32 {
     if let Some(parent) = destination.parent()
@@ -121,7 +183,9 @@ fn move_in(
     match place_link(path, destination) {
         Ok(text) => {
             r.line(format!(
-                "adopted {file_name} from {target} into the Commons ({family})"
+                "adopted {file_name} from {} into the Commons ({})",
+                placement.target,
+                placement.family_label()
             ));
             r.line(format!("  {} → {}", path.display(), text.display()));
             EXIT_CLEAN
@@ -162,22 +226,182 @@ fn relink(path: &Path, destination: &Path, file_name: &str, target: &str, r: &mu
     }
 }
 
+/// One adoption, resolved: everything the fan-out needs to know.
+struct Adoption<'a> {
+    env: &'a Env,
+    config: &'a Config,
+    commons: &'a Commons,
+    placement: &'a Placement,
+    /// The adopted path, normalized. It already holds its link (or, in a dry
+    /// run, still holds the content), so the fan-out passes it by.
+    origin: &'a Path,
+    /// The Commons entry the adoption produces.
+    destination: &'a Path,
+}
+
+/// Fan the adopted entry out to every installed agent, through the same
+/// survey/apply machinery `sync` runs per entry — Variants kept, Native agents
+/// skipped. A dry run prints the same items in "would" tense and writes
+/// nothing; a write failure is reported and the remaining agents still get
+/// their links, exactly as a sync write failure behaves.
+fn fan_out(a: &Adoption, r: &mut Reporter, dry_run: bool) {
+    match a.placement.surface {
+        Surface::FanOut(family) => fan_out_family(a, family, r, dry_run),
+        Surface::Instructions => fan_out_instructions(a, r, dry_run),
+    }
+}
+
+/// One entry of one symlink family, surveyed and applied per Target.
+fn fan_out_family(a: &Adoption, family: Family, r: &mut Reporter, dry_run: bool) {
+    let file_name = a
+        .destination
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_default();
+    let name = match family.shape() {
+        Shape::Markdown => file_name.trim_end_matches(".md").to_string(),
+        Shape::Directory => file_name.clone(),
+    };
+    let entry = Entry {
+        name,
+        file_name,
+        path: a.destination.to_path_buf(),
+    };
+
+    for target in target::resolve(a.env, a.config) {
+        // Native agents and absent surfaces alike take no fan-out directory.
+        let Some(dir) = target.fanout_dir(family) else {
+            continue;
+        };
+        let items = link::survey(
+            &a.env.in_home(dir),
+            a.commons.root(),
+            std::slice::from_ref(&entry),
+        );
+        for item in items {
+            // Only the adopted entry is adopt's business — leftovers under
+            // other names in the same directory are sync's.
+            if item.canonical.is_none() || link::normalize(&item.path) == a.origin {
+                continue;
+            }
+            match item.state {
+                link::State::Linked => {}
+                state if state.needs_change() => {
+                    if dry_run {
+                        r.line(format!("  would link into {} ({dir})", target.name));
+                    } else if let Err(e) = link::apply(&item) {
+                        r.problem(format!("cannot link into {} ({dir}): {e}", target.name));
+                    } else {
+                        r.line(format!("  linked into {} ({dir})", target.name));
+                    }
+                }
+                // A Variant or a Foreign link is somebody's decision: kept,
+                // and named in sync's own words.
+                state => r.line(format!(
+                    "  {} ({dir}): {} — {}",
+                    target.name,
+                    state.label(),
+                    state.note()
+                )),
+            }
+        }
+    }
+}
+
+/// The instructions file, fanned out by each agent's own mechanism — exactly
+/// what a sync would do for this family, no more.
+fn fan_out_instructions(a: &Adoption, r: &mut Reporter, dry_run: bool) {
+    // The survey wants an existing Commons file. In a dry run of a first-time
+    // absorb it does not exist yet, so the origin stands in: same content, and
+    // consulted for nothing beyond existing.
+    let commons_file = if a.destination.is_file() {
+        a.destination
+    } else {
+        a.origin
+    };
+
+    for item in instructions::survey(a.env, a.config, commons_file) {
+        if link::normalize(&item.path) == a.origin {
+            continue; // the origin already holds its link
+        }
+        let place = item
+            .path
+            .strip_prefix(a.env.home())
+            .unwrap_or(&item.path)
+            .display()
+            .to_string();
+        match item.state {
+            instructions::State::Linked | instructions::State::ImportPresent => {}
+            instructions::State::Missing => {
+                if dry_run {
+                    r.line(format!("  would link into {} ({place})", item.target));
+                } else if let Err(e) = instructions::apply(&item) {
+                    r.problem(format!("cannot link into {} ({place}): {e}", item.target));
+                } else {
+                    r.line(format!("  linked into {} ({place})", item.target));
+                }
+            }
+            instructions::State::ImportMissing => {
+                if dry_run {
+                    r.line(format!(
+                        "  would add the import line to {} ({place})",
+                        item.target
+                    ));
+                } else if let Err(e) = instructions::apply(&item) {
+                    r.problem(format!("cannot write {}: {e}", item.path.display()));
+                } else {
+                    r.line(format!(
+                        "  added the import line to {} ({place})",
+                        item.target
+                    ));
+                }
+            }
+            // Somebody else's file or link: kept, named in sync's own words.
+            instructions::State::Conflict | instructions::State::Foreign => {
+                r.line(format!("  {}: {}", item.target, item.note()));
+            }
+        }
+    }
+}
+
 /// Create the canonical relative link from `path` to `destination`.
 fn place_link(path: &Path, destination: &Path) -> std::io::Result<PathBuf> {
-    let parent = path.parent().unwrap_or(Path::new("."));
-    let text = link::relative_from(parent, destination);
+    let text = canonical_text(path, destination);
     link::create_symlink(&text, path)?;
     Ok(text)
 }
 
-/// Where in the Commons an adopted path belongs: which Target it came from, and
-/// the Commons-relative path it will occupy.
+/// The canonical relative link text from `path`'s parent to `destination`.
+fn canonical_text(path: &Path, destination: &Path) -> PathBuf {
+    link::relative_from(path.parent().unwrap_or(Path::new(".")), destination)
+}
+
+/// Where in the Commons an adopted path belongs: which Target it came from,
+/// which surface matched, and the Commons-relative path it will occupy.
 struct Placement {
     target: String,
-    /// What to call the family in reports.
-    family: String,
+    surface: Surface,
     /// Commons-relative destination, e.g. `skills/research` or `AGENTS.md`.
     commons_rel: PathBuf,
+}
+
+/// The Target surface an adopted path was found in.
+#[derive(Clone, Copy)]
+enum Surface {
+    /// A family fan-out directory — the entry fans back out to every agent.
+    FanOut(Family),
+    /// A per-agent instructions destination.
+    Instructions,
+}
+
+impl Placement {
+    /// What to call the family in reports.
+    fn family_label(&self) -> &'static str {
+        match self.surface {
+            Surface::FanOut(family) => family.name(),
+            Surface::Instructions => "instructions",
+        }
+    }
 }
 
 /// Match a path against every Target surface agentstow manages: the fan-out
@@ -194,7 +418,7 @@ fn locate(env: &Env, config: &Config, path: &Path) -> Option<Placement> {
             if link::normalize(&env.in_home(dir)) == parent {
                 return Some(Placement {
                     target: target.name.clone(),
-                    family: family.name().to_string(),
+                    surface: Surface::FanOut(*family),
                     commons_rel: PathBuf::from(family.name()).join(&file_name),
                 });
             }
@@ -212,7 +436,7 @@ fn locate(env: &Env, config: &Config, path: &Path) -> Option<Placement> {
             if destination.map(|d| link::normalize(&d)) == Some(link::normalize(path)) {
                 return Some(Placement {
                     target: target.name.clone(),
-                    family: "instructions".to_string(),
+                    surface: Surface::Instructions,
                     commons_rel: PathBuf::from(commons::INSTRUCTIONS),
                 });
             }

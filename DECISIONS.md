@@ -798,3 +798,24 @@ machine; one third-party file agentstow promised never to touch denying
 service to every other agent is the failure mode the earlier decision exists
 to prevent, and three tests pin it. Consequences: `status` and `mcp list`
 refuse on a Commons fault naming *all* faults, not just the first.
+
+## 2026-08-16 — Adopt fans instructions out too, and previews it from the origin
+
+Ticket 05 left the instructions-file absorb's fan-out optional ("only insofar
+as instructions sync applies... if awkward, keep link-at-origin only"). It is
+not awkward: adopt reuses `instructions::survey` + `apply` verbatim — the same
+per-agent mechanisms sync runs, origin skipped since it already holds its
+link — so an adopted AGENTS.md lands its import line in Claude's file and its
+symlinks everywhere else during the adopt itself, and the no-op-sync property
+holds for instructions exactly as for the symlink families. One wrinkle that
+survey guards on the Commons file existing, which a dry run of a first-time
+absorb has not created yet: the preview surveys against the *origin* file
+instead — same content, consulted for nothing beyond existing — rather than
+growing the survey a bypass flag or letting the preview go silent. Accepted
+drift: a hand-made link already pointing at the not-yet-existing Commons file
+previews as foreign; a real run classifies it linked. Two smaller calls in the
+same slice: a fan-out write failure is reported and the remaining agents still
+get their links (exit 1), mirroring sync's write-failure semantics rather than
+aborting a half-fanned adopt; and Variants or Foreign links met during the
+fan-out are named in the report using `link::State`'s own label/note words, so
+adopt and sync describe the same state in the same vocabulary.
