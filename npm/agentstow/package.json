@@ -1,7 +1,7 @@
 {
   "name": "agentstow",
-  "version": "2.0.0",
-  "description": "Canonical configs, fanned out to all your AI coding agents — sync skills, instructions, MCP servers, commands, agents and hooks from the Commons, the canonical ~/.agents directory",
+  "version": "2.0.1",
+  "description": "Canonical configs, fanned out to all your AI coding agents \u2014 sync skills, instructions, MCP servers, commands, agents and hooks from the Commons, the canonical ~/.agents directory",
   "license": "MIT",
   "repository": {
     "type": "git",
@@ -31,11 +31,11 @@
     "node": ">=18"
   },
   "optionalDependencies": {
-    "@agentstow/darwin-arm64": "2.0.0",
-    "@agentstow/darwin-x64": "2.0.0",
-    "@agentstow/linux-arm64": "2.0.0",
-    "@agentstow/linux-x64": "2.0.0",
-    "@agentstow/win32-arm64": "2.0.0",
-    "@agentstow/win32-x64": "2.0.0"
+    "@agentstow/darwin-arm64": "2.0.1",
+    "@agentstow/darwin-x64": "2.0.1",
+    "@agentstow/linux-arm64": "2.0.1",
+    "@agentstow/linux-x64": "2.0.1",
+    "@agentstow/win32-arm64": "2.0.1",
+    "@agentstow/win32-x64": "2.0.1"
   }
 }

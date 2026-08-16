@@ -7,8 +7,8 @@ use clap::{Parser, Subcommand};
 #[command(
     name = "agentstow",
     version,
-    about = "Canonical configs, fanned out to all your AI coding agents",
-    long_about = "Canonical configs, fanned out to all your AI coding agents.\n\n\
+    about = "One canonical .agents/ folder, fanned out to all your AI coding agents",
+    long_about = "One canonical .agents/ folder, fanned out to all your AI coding agents.\n\n\
                   Sync skills, instructions, MCP servers, commands, agents and hooks \
                   from the Commons — the canonical ~/.agents directory — to every installed agent.",
     after_help = "Home: https://github.com/agentstow/agentstow"
