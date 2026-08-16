@@ -1,6 +1,6 @@
 //! A global lock so a cron sync and a hand-run sync cannot interleave writes.
 //!
-//! The lock lives beside the tool's own configuration, never in the Commons.
+//! The lock lives in the tool's state directory, never in the Commons.
 //! It is released when the process exits — advisory `flock` on Unix, an
 //! exclusive share mode on Windows — so a crashed run leaves nothing to
 //! clean up.
@@ -49,9 +49,9 @@ impl std::fmt::Display for Error {
 }
 
 /// Take the exclusive lock, waiting up to `timeout`.
-pub fn acquire(config_dir: &Path, timeout: Duration) -> Result<Lock, Error> {
-    fs::create_dir_all(config_dir).map_err(Error::Io)?;
-    let path = config_dir.join("lock");
+pub fn acquire(state_dir: &Path, timeout: Duration) -> Result<Lock, Error> {
+    fs::create_dir_all(state_dir).map_err(Error::Io)?;
+    let path = state_dir.join("lock");
 
     let start = Instant::now();
     loop {

@@ -462,7 +462,7 @@ fn status_reports_mcp_in_json() {
 fn a_held_lock_stops_the_write() {
     let f = machine();
     f.commons_mcp(one_server());
-    let _held = common::hold_lock(f.path(".agentstow/lock"));
+    let _held = common::hold_lock(f.path(".local/state/agentstow/lock"));
 
     let out = f.run_with_env(&["sync"], &[("AGENTSTOW_LOCK_TIMEOUT_MS", "150")]);
 

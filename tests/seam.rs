@@ -89,11 +89,66 @@ fn config_directory_is_never_inside_the_commons() {
     let out = f.run(&["doctor"]);
 
     out.assert_clean()
-        .assert_stdout_has(&f.home().join(".agentstow").display().to_string());
+        .assert_stdout_has(&f.home().join(".config/agentstow").display().to_string())
+        .assert_stdout_has(
+            &f.home()
+                .join(".local/state/agentstow")
+                .display()
+                .to_string(),
+        );
     assert!(
-        !f.commons().join(".agentstow").exists(),
+        !f.commons().join(".config").exists(),
         "tool config must not live in the Commons"
     );
+}
+
+#[test]
+fn an_absolute_xdg_config_home_wins_over_the_derived_default() {
+    let f = Fixture::new();
+    let elsewhere = f.home().join("xdg-elsewhere").display().to_string();
+
+    let out = f.run_with_env(&["doctor"], &[("XDG_CONFIG_HOME", &elsewhere)]);
+
+    out.assert_clean()
+        .assert_stdout_has(&format!("{elsewhere}/agentstow"));
+}
+
+#[test]
+fn a_relative_xdg_config_home_is_ignored() {
+    let f = Fixture::new();
+
+    let out = f.run_with_env(&["doctor"], &[("XDG_CONFIG_HOME", "relative/path")]);
+
+    out.assert_clean()
+        .assert_stdout_has(&f.home().join(".config/agentstow").display().to_string());
+}
+
+#[test]
+fn the_lock_lives_in_the_state_dir_and_the_legacy_dir_stays_absent() {
+    let f = Fixture::new();
+
+    f.run(&["sync"]).assert_clean();
+
+    assert!(
+        f.present(".local/state/agentstow/lock"),
+        "the lock must land in the XDG state dir"
+    );
+    assert!(
+        !f.present(".agentstow"),
+        "nothing may be created at the legacy config dir"
+    );
+}
+
+#[test]
+fn doctor_names_a_leftover_legacy_config_dir() {
+    let f = Fixture::new();
+    f.dir(".agentstow");
+
+    let out = f.run(&["doctor"]);
+
+    out.assert_clean()
+        .assert_stderr_has("no longer read")
+        .assert_stderr_has(".config/agentstow");
 }
 
 #[test]

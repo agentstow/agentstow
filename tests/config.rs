@@ -1,11 +1,11 @@
-//! `~/.agentstow/agentstow.toml` — the only place agentstow's own settings live.
+//! `$XDG_CONFIG_HOME/agentstow/agentstow.toml` — the only place agentstow's own settings live.
 
 mod common;
 
 use common::Fixture;
 
 fn config(f: &Fixture, body: &str) {
-    f.file(".agentstow/agentstow.toml", body);
+    f.file(".config/agentstow/agentstow.toml", body);
 }
 
 #[test]

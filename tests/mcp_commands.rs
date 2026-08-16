@@ -17,7 +17,7 @@ fn one_server(f: &Fixture) {
 }
 
 fn config(f: &Fixture, body: &str) {
-    f.file(".agentstow/agentstow.toml", body);
+    f.file(".config/agentstow/agentstow.toml", body);
 }
 
 // ------------------------------------------------------------------ Targeting
@@ -355,7 +355,7 @@ fn adopting_from_codex_recovers_the_canonical_shape_and_tweaks() {
             .is_none(),
         "a Codex-only knob does not belong in the pure Commons shape"
     );
-    let config = f.contents(".agentstow/agentstow.toml");
+    let config = f.contents(".config/agentstow/agentstow.toml");
     assert!(
         config.contains("startup_timeout_sec"),
         "it becomes a Tweak instead:\n{config}"
@@ -503,7 +503,7 @@ fn a_refused_agent_never_lands_in_the_allowlist() {
     let out = f.run(&["mcp", "adopt", "--all"]);
 
     out.assert_code(1);
-    let config = f.contents(".agentstow/agentstow.toml");
+    let config = f.contents(".config/agentstow/agentstow.toml");
     assert!(
         !config.contains("codex"),
         "the refused agent must not be allowlisted:\n{config}"
@@ -568,7 +568,7 @@ fn an_env_reference_in_an_agent_config_adopts_cleanly() {
 fn a_hand_written_config_survives_an_adoption() {
     let f = machine();
     f.file(
-        ".agentstow/agentstow.toml",
+        ".config/agentstow/agentstow.toml",
         "# my settings\n[targets]\ncursor = false\n\n# servers\n[mcp.other]\nagents = [\"claude\"]\n",
     );
     f.file(
@@ -578,7 +578,7 @@ fn a_hand_written_config_survives_an_adoption() {
 
     f.run(&["mcp", "adopt", "claude/api"]).assert_clean();
 
-    let config = f.contents(".agentstow/agentstow.toml");
+    let config = f.contents(".config/agentstow/agentstow.toml");
     assert!(config.contains("# my settings"), "got:\n{config}");
     assert!(config.contains("cursor = false"), "got:\n{config}");
     assert!(config.contains("[mcp.other]"), "got:\n{config}");
@@ -590,7 +590,7 @@ fn a_malformed_tool_config_never_quotes_its_own_contents() {
     let f = machine();
     one_server(&f);
     f.file(
-        ".agentstow/agentstow.toml",
+        ".config/agentstow/agentstow.toml",
         "[mcp.api.tweaks.claude]\nsecret = \"CANARY-cfg-leak\" oops\n",
     );
 
@@ -604,7 +604,7 @@ fn a_malformed_tool_config_never_quotes_its_own_contents() {
 fn a_non_table_mcp_section_is_refused_rather_than_ignored() {
     let f = machine();
     one_server(&f);
-    f.file(".agentstow/agentstow.toml", "mcp = 5\n");
+    f.file(".config/agentstow/agentstow.toml", "mcp = 5\n");
 
     f.run(&["sync"]).assert_code(1).assert_stderr_has("mcp");
 }

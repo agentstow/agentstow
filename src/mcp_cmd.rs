@@ -135,7 +135,7 @@ pub fn remove(env: &Env, config: &Config, r: &mut Reporter, name: &str) -> i32 {
         return EXIT_ERROR;
     }
 
-    let _lock = match crate::lock::acquire(env.config_dir(), crate::lock::timeout(env)) {
+    let _lock = match crate::lock::acquire(env.state_dir(), crate::lock::timeout(env)) {
         Ok(guard) => guard,
         Err(e) => {
             r.problem(e.to_string());
@@ -229,7 +229,7 @@ pub fn adopt(env: &Env, config: &Config, r: &mut Reporter, spec: Option<&str>, a
         }
     };
 
-    let _lock = match crate::lock::acquire(env.config_dir(), crate::lock::timeout(env)) {
+    let _lock = match crate::lock::acquire(env.state_dir(), crate::lock::timeout(env)) {
         Ok(guard) => guard,
         Err(e) => {
             r.problem(e.to_string());

@@ -72,7 +72,7 @@ pub fn run(env: &Env, config: &Config, r: &mut Reporter, raw_path: &str) -> i32 
         return EXIT_ERROR;
     }
 
-    let _lock = match lock::acquire(env.config_dir(), lock::timeout(env)) {
+    let _lock = match lock::acquire(env.state_dir(), lock::timeout(env)) {
         Ok(guard) => guard,
         Err(e) => {
             r.problem(e.to_string());

@@ -27,7 +27,7 @@ pub fn run(env: &Env, config: &Config, r: &mut Reporter, dry_run: bool) -> i32 {
     let _lock = if dry_run {
         None
     } else {
-        match lock::acquire(env.config_dir(), lock::timeout(env)) {
+        match lock::acquire(env.state_dir(), lock::timeout(env)) {
             Ok(guard) => Some(guard),
             Err(e) => {
                 r.problem(e.to_string());

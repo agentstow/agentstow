@@ -1,4 +1,5 @@
-//! Tool configuration: `~/.agentstow/agentstow.toml`.
+//! Tool configuration: `$XDG_CONFIG_HOME/agentstow/agentstow.toml` (default
+//! `~/.config/agentstow/`).
 //!
 //! Deliberately tiny, and deliberately *not* in the Commons — the Commons holds
 //! ecosystem content that other tools may one day read, so nothing

@@ -1,4 +1,4 @@
-//! Writing `~/.agentstow/agentstow.toml`.
+//! Writing the tool config, `agentstow.toml` in the XDG config directory.
 //!
 //! The user hand-writes this file, so edits are format-preserving in the same
 //! way the Codex merge is: `toml_edit` keeps comments, key order and spacing,
@@ -69,6 +69,11 @@ fn edit(
         return Ok(());
     }
 
+    // The config dir is created lazily: nothing else guarantees it exists,
+    // since the lock lives in the state dir.
+    std::fs::create_dir_all(config_dir).map_err(|e| Error {
+        message: format!("cannot create {}: {e}", config_dir.display()),
+    })?;
     crate::write::atomic(&path, updated.as_bytes()).map_err(|e| Error {
         message: format!("cannot write {}: {e}", path.display()),
     })?;

@@ -245,7 +245,7 @@ fn missing_commons_is_an_error_that_names_the_fix() {
 fn a_second_process_holding_the_lock_fails_cleanly() {
     let f = machine();
     f.commons_skill("research");
-    let _held = common::hold_lock(f.path(".agentstow/lock"));
+    let _held = common::hold_lock(f.path(".local/state/agentstow/lock"));
 
     let out = f.run_with_vars(
         &["sync"],

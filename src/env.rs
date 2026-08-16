@@ -6,8 +6,10 @@ use std::path::{Path, PathBuf};
 
 /// Where the Commons lives when `AGENTSTOW_HOME` is unset.
 pub const COMMONS_DIR: &str = ".agents";
-/// Where tool configuration lives when the home directory is `~`.
-pub const CONFIG_DIR: &str = ".agentstow";
+/// The tool's directory name inside each XDG base directory.
+const TOOL_DIR: &str = "agentstow";
+/// Where tool configuration lived before v2 — named by doctor, never read.
+pub const LEGACY_CONFIG_DIR: &str = ".agentstow";
 
 /// Resolved locations for one invocation.
 #[derive(Debug, Clone)]
@@ -16,8 +18,12 @@ pub struct Env {
     home: PathBuf,
     /// The Commons — `AGENTSTOW_HOME`, else `<home>/.agents`.
     commons: PathBuf,
-    /// Tool configuration directory — `<home>/.agentstow`.
+    /// Tool configuration — `$XDG_CONFIG_HOME/agentstow`, else `<home>/.config/agentstow`.
     config: PathBuf,
+    /// Machine state (the lock) — `$XDG_STATE_HOME/agentstow`, else `<home>/.local/state/agentstow`.
+    state: PathBuf,
+    /// Where v1 kept its config — only doctor looks, to name the leftover.
+    legacy_config: PathBuf,
     vars: BTreeMap<String, String>,
 }
 
@@ -54,12 +60,16 @@ impl Env {
             None => home.join(COMMONS_DIR),
         };
 
-        let config = home.join(CONFIG_DIR);
+        let config = xdg_dir(&vars, "XDG_CONFIG_HOME", &home, ".config");
+        let state = xdg_dir(&vars, "XDG_STATE_HOME", &home, ".local/state");
+        let legacy_config = home.join(LEGACY_CONFIG_DIR);
 
         Ok(Self {
             home,
             commons,
             config,
+            state,
+            legacy_config,
             vars,
         })
     }
@@ -79,6 +89,16 @@ impl Env {
         &self.config
     }
 
+    /// The state directory — the lock lives here, never in the Commons.
+    pub fn state_dir(&self) -> &Path {
+        &self.state
+    }
+
+    /// Where v1 kept its config. Never read; doctor names a leftover one.
+    pub fn legacy_config_dir(&self) -> &Path {
+        &self.legacy_config
+    }
+
     /// Resolve a home-relative path such as `.claude/skills`.
     pub fn in_home(&self, rel: &str) -> PathBuf {
         self.home.join(rel)
@@ -88,4 +108,15 @@ impl Env {
     pub fn var(&self, name: &str) -> Option<&str> {
         self.vars.get(name).map(String::as_str)
     }
+}
+
+/// One XDG base directory: the variable when set to an absolute path — the
+/// spec says a relative value is invalid and must be ignored — else the
+/// home-derived default. The tool's subdirectory is appended either way.
+fn xdg_dir(vars: &BTreeMap<String, String>, var: &str, home: &Path, default_rel: &str) -> PathBuf {
+    let base = match vars.get(var).filter(|v| !v.is_empty()).map(PathBuf::from) {
+        Some(p) if p.is_absolute() => p,
+        _ => home.join(default_rel),
+    };
+    base.join(TOOL_DIR)
 }

@@ -26,7 +26,16 @@ pub fn run(env: &Env, config: &Config, r: &mut Reporter) -> i32 {
     r.line(format!("Commons {}", commons.root().display()));
     r.line(format!("Home    {}", env.home().display()));
     r.line(format!("Config  {}", env.config_dir().display()));
+    r.line(format!("State   {}", env.state_dir().display()));
     r.blank();
+
+    if env.legacy_config_dir().is_dir() {
+        r.warn(format!(
+            "{} is no longer read — move agentstow.toml to {} and delete the directory",
+            env.legacy_config_dir().display(),
+            env.config_dir().display()
+        ));
+    }
 
     if commons.exists() {
         report_commons(&commons, r);
