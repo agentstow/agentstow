@@ -376,8 +376,9 @@ pub fn adopt(env: &Env, config: &Config, r: &mut Reporter, spec: Option<&str>, a
     }
 }
 
-/// Where one Target keeps its MCP servers, if it takes them at all.
-fn mcp_destination(
+/// Where one Target keeps its MCP servers, if it takes them at all. Shared
+/// with `revert`, whose per-target removal is `mcp remove`'s.
+pub(crate) fn mcp_destination(
     env: &Env,
     target: &Target,
 ) -> Option<(std::path::PathBuf, &'static str, crate::registry::Format)> {

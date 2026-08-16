@@ -359,6 +359,94 @@ pub fn apply(path: &Path, root_key: &str, items: &[&Item]) -> Result<crate::mcp:
     })
 }
 
+/// One hook element removed by [`strip`], for the caller's report.
+#[derive(Debug, Clone)]
+pub struct Stripped {
+    /// The canonical event name, as reports use it.
+    pub event: String,
+    /// The Commons command, verbatim — it is the user's own declaration.
+    pub command: String,
+}
+
+/// What [`strip`] took out of one agent's hook file, and what stopped it.
+#[derive(Default)]
+pub struct Strip {
+    pub removed: Vec<Stripped>,
+    /// Faults in the Commons' hook files. A hook that cannot be read cannot be
+    /// identified, so each fault here is a removal that did not happen.
+    pub problems: Vec<String>,
+}
+
+/// Remove every hook element of ours from one agent's hook file — the revert
+/// path. Identity is the survey's (ADR-0003): an element is ours when its
+/// command matches a Commons declaration under that declaration's native event
+/// for this agent. Groups our removal empties go with it; a group that was
+/// already empty, and every Foreign element, stay exactly as written.
+pub fn strip(path: &Path, root_key: &str, agent: &str, commons_dir: &Path) -> Result<Strip, Error> {
+    let mut strip = Strip::default();
+    if !commons_dir.is_dir() {
+        return Ok(strip);
+    }
+    let declared = read_commons(commons_dir, &mut strip.problems);
+    if declared.is_empty() {
+        return Ok(strip);
+    }
+
+    let mut document = read_document(path)?;
+    let Some(events) = document
+        .as_object_mut()
+        .and_then(|root| root.get_mut(root_key))
+        .and_then(Value::as_object_mut)
+    else {
+        return Ok(strip);
+    };
+
+    for hook in &declared {
+        let Some(event) = native_event(agent, &hook.event) else {
+            continue;
+        };
+        let Some(groups) = events.get_mut(event).and_then(Value::as_array_mut) else {
+            continue;
+        };
+        let present = groups.iter().any(|group| {
+            group
+                .get("hooks")
+                .and_then(Value::as_array)
+                .is_some_and(|hooks| {
+                    hooks.iter().any(|leaf| {
+                        leaf.get("command").and_then(Value::as_str) == Some(hook.command.as_str())
+                    })
+                })
+        });
+        if !present {
+            continue;
+        }
+        remove_by_command(groups, &render(hook));
+        // An event array our removal emptied held only our hook, so the key is
+        // ours to take too; one that was empty before us never gets here.
+        if groups.is_empty() {
+            events.shift_remove(event);
+        }
+        strip.removed.push(Stripped {
+            event: hook.event.clone(),
+            command: hook.command.clone(),
+        });
+    }
+
+    if strip.removed.is_empty() {
+        return Ok(strip);
+    }
+
+    let body = serde_json::to_string_pretty(&document).map_err(|e| Error {
+        message: format!("cannot serialise {}: {e}", path.display()),
+    })?;
+    crate::write::atomic(path, body.as_bytes()).map_err(|e| Error {
+        message: format!("cannot write {}: {e}", path.display()),
+    })?;
+
+    Ok(strip)
+}
+
 /// Take our hook out of every group it appears in, and drop any group we
 /// emptied doing so. Only elements matching our command are ever removed.
 fn remove_by_command(groups: &mut Vec<Value>, rendered: &Value) {

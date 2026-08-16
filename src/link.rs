@@ -171,6 +171,14 @@ fn classify(path: &Path, commons: &Path) -> Found {
     }
 }
 
+/// Whether the object at `path` is a symlink of ours — one resolving into the
+/// Commons. Lexical like [`classify`], so a dangling link answers the same as
+/// a live one. Everything else — Foreign links, real files, real directories —
+/// answers `false`.
+pub fn is_ours(path: &Path, commons: &Path) -> bool {
+    matches!(classify(path, commons), Found::Ours { .. })
+}
+
 /// The state of one name in one Target directory.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum State {

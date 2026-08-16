@@ -865,3 +865,25 @@ copy removes whatever half-copied destination it left, so an interrupted
 adopt never leaves a partial Commons entry for the next sync to fan out —
 mirroring absorb's put-it-back recovery in spirit, though here the original
 was never touched.
+
+## 2026-08-16 — revert <agent>: the calls ticket 08 left open
+
+Four. First, `targets.<name> = false` now switches a config-defined target
+off in `target::resolve` exactly as it does a built-in one — previously the
+key was read and then silently ignored for customs. Revert's refusal prints
+that line as the guarantee a later sync will not redo the teardown, so the
+line has to mean what it says for every target; a test pins a disabled
+custom target staying reverted. Second, hook removal uses the survey's
+identity, not the command string alone: an element is ours when its command
+matches a Commons declaration *under that declaration's native event for
+this agent*, so a user's own reuse of the same command under another event
+survives. An event array the removal empties loses its key too — every
+group in it was one ours had emptied, or it would not be empty — while an
+array that was already empty is never entered, and the root `hooks` key
+stays even at `{}`, because nothing proves agentstow created it. Third,
+removing the import line removes exactly the line: a CLAUDE.md that held
+nothing else is left behind empty rather than deleted — the file is the
+user's, and the one sanctioned edit gets one equally narrow undo. Fourth,
+the MCP sweep ignores allowlists: any entry in this agent's config whose
+name is in the Commons is Managed wherever it appears, so a rule scoping
+the server elsewhere does not shield a stale copy from the teardown.

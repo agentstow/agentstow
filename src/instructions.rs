@@ -223,6 +223,40 @@ fn import_reference(env: &Env) -> String {
     }
 }
 
+/// Delete exactly the import line from a user-owned file — the undo of the one
+/// sanctioned edit. Every other byte survives, line endings included, and the
+/// file itself stays even when the line was all it held. `Ok(true)` when a
+/// line was removed; a file that never had one (or does not exist) is `Ok(false)`.
+pub fn remove_import_line(env: &Env, path: &Path) -> std::io::Result<bool> {
+    let reference = import_reference(env);
+    let line = format!("@{reference}");
+
+    let body = match fs::read_to_string(path) {
+        Ok(body) => body,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(false),
+        Err(e) => return Err(e),
+    };
+
+    // The same test `import_item` uses to see the line, so what sync considers
+    // present is exactly what revert removes.
+    let mut kept = String::with_capacity(body.len());
+    let mut removed = false;
+    for piece in body.split_inclusive('\n') {
+        let l = piece.trim_end_matches(['\n', '\r']).trim();
+        if l == line || (l.starts_with('@') && l[1..].trim() == reference) {
+            removed = true;
+            continue;
+        }
+        kept.push_str(piece);
+    }
+
+    if !removed {
+        return Ok(false);
+    }
+    fs::write(path, kept)?;
+    Ok(true)
+}
+
 /// Bring one item to its intended state. Conflicts and Foreign links are no-ops.
 pub fn apply(item: &Item) -> std::io::Result<()> {
     match item.state {

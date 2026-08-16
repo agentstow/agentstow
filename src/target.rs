@@ -76,6 +76,12 @@ pub fn resolve(env: &Env, config: &Config) -> Vec<Target> {
         .collect();
 
     for custom in config.custom() {
+        // `targets.<name> = false` switches off a config-defined agent the same
+        // way it does a built-in one — revert's refusal prints that line, so it
+        // has to mean what it says for every target.
+        if config.is_disabled(&custom.name) {
+            continue;
+        }
         targets.push(Target {
             name: custom.name.clone(),
             root: custom.root.clone(),
@@ -86,4 +92,23 @@ pub fn resolve(env: &Env, config: &Config) -> Vec<Target> {
 
     targets.retain(|t| t.detected(env.home()));
     targets
+}
+
+/// The one Target with this name — a registry row or a config-defined agent —
+/// found without the disabled filter and without detection. Revert is the only
+/// caller: it exists to reach the agents [`resolve`] deliberately drops.
+pub fn find(config: &Config, name: &str) -> Option<Target> {
+    if let Some(agent) = registry::by_name(name) {
+        return Some(Target::from_agent(agent));
+    }
+    config
+        .custom()
+        .iter()
+        .find(|c| c.name == name)
+        .map(|custom| Target {
+            name: custom.name.clone(),
+            root: custom.root.clone(),
+            fanout: custom.fanout.iter().map(|(f, d)| (*f, d.clone())).collect(),
+            agent: None,
+        })
 }

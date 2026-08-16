@@ -36,6 +36,11 @@ pub enum Command {
         #[arg(long)]
         dry_run: bool,
     },
+    /// Remove everything agentstow put into one target.
+    Revert {
+        /// The agent to strip, by the name `status` and `doctor` use.
+        agent: String,
+    },
     /// Report what is in sync, what is not, and what is not ours.
     Status {
         /// Emit a machine-readable report on stdout.

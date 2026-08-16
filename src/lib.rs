@@ -28,6 +28,7 @@ pub mod mcp_toml;
 pub mod registry;
 pub mod render;
 pub mod report;
+pub mod revert;
 pub mod status;
 pub mod sync;
 pub mod target;
@@ -104,6 +105,7 @@ pub fn run(
         cli::Command::Adopt { path, dry_run } => {
             adopt::run(&env, &config, &mut reporter, &path, dry_run)
         }
+        cli::Command::Revert { agent } => revert::run(&env, &config, &mut reporter, &agent),
         cli::Command::Status { json } => status::run(&env, &config, &mut reporter, json),
         cli::Command::Mcp { command } => match command {
             cli::McpCommand::List { json } => mcp_cmd::list(&env, &config, &mut reporter, json),
