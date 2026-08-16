@@ -11,6 +11,9 @@ fn machine() -> Fixture {
     let f = Fixture::new();
     f.agent(".claude");
     f.agent(".codex");
+    // pi is the second skills fan-out target: codex reads the Commons
+    // natively now, so cross-agent fan-out assertions land on pi.
+    f.agent(".pi");
     f
 }
 
@@ -48,10 +51,10 @@ fn an_adopted_skill_reaches_every_other_agent_at_once() {
     ]);
 
     out.assert_clean()
-        .assert_stdout_has("linked into codex (.codex/skills)");
+        .assert_stdout_has("linked into pi (.pi/agent/skills)");
     assert_eq!(
-        f.link_text(".codex/skills/local"),
-        "../../.agents/skills/local",
+        f.link_text(".pi/agent/skills/local"),
+        "../../../.agents/skills/local",
         "the fan-out must leave sync's canonical link form"
     );
 }
@@ -75,22 +78,31 @@ fn sync_right_after_an_adopt_has_nothing_to_do() {
 fn the_fan_out_keeps_variants_and_skips_native_agents() {
     let f = machine();
     f.agent(".config/opencode"); // reads the Commons natively — no skills fan-out
+    f.agent(".cursor"); // flipped Native 2026-08-16 — likewise
+    f.agent(".gemini"); // Native, and never had a fan-out dir
     f.file(".claude/skills/dup/SKILL.md", "the adopted copy\n");
-    f.file(".codex/skills/dup/SKILL.md", "the codex variant\n");
+    f.file(".pi/agent/skills/dup/SKILL.md", "the pi variant\n");
 
     let out = f.run(&["adopt", &f.path(".claude/skills/dup").display().to_string()]);
 
     out.assert_clean()
-        .assert_stdout_has("codex (.codex/skills): variant — left alone");
-    assert!(f.is_real_dir(".codex/skills/dup"), "a Variant is kept");
+        .assert_stdout_has("pi (.pi/agent/skills): variant — left alone");
+    assert!(f.is_real_dir(".pi/agent/skills/dup"), "a Variant is kept");
     assert_eq!(
-        f.contents(".codex/skills/dup/SKILL.md"),
-        "the codex variant\n"
+        f.contents(".pi/agent/skills/dup/SKILL.md"),
+        "the pi variant\n"
     );
-    assert!(
-        !f.present(".config/opencode/skills/dup"),
-        "a Native agent receives nothing"
-    );
+    for native in [
+        ".config/opencode/skills/dup",
+        ".codex/skills/dup",
+        ".cursor/skills/dup",
+        ".gemini/skills/dup",
+    ] {
+        assert!(
+            !f.present(native),
+            "a Native agent receives nothing: {native}"
+        );
+    }
 }
 
 #[test]
@@ -247,7 +259,7 @@ fn a_repo_path_becomes_an_absolute_commons_link_and_fans_out() {
             path.display()
         ))
         .assert_stdout_has("linked into claude (.claude/skills)")
-        .assert_stdout_has("linked into codex (.codex/skills)");
+        .assert_stdout_has("linked into pi (.pi/agent/skills)");
     assert_eq!(
         f.link_text(".agents/skills/research"),
         path.display().to_string(),
@@ -446,7 +458,7 @@ fn a_family_path_with_no_repo_above_copies_in_and_fans_out() {
             path.display()
         ))
         .assert_stdout_has("linked into claude (.claude/skills)")
-        .assert_stdout_has("linked into codex (.codex/skills)")
+        .assert_stdout_has("linked into pi (.pi/agent/skills)")
         .assert_stdout_lacks("Sourced");
     assert!(
         !f.is_symlink(".agents/skills/research"),
@@ -521,7 +533,7 @@ fn dry_run_of_a_copy_changes_nothing_and_previews_the_real_run() {
              will diverge from the Commons copy"
         ))
         .assert_stdout_has("would link into claude (.claude/skills)")
-        .assert_stdout_has("would link into codex (.codex/skills)");
+        .assert_stdout_has("would link into pi (.pi/agent/skills)");
     assert_eq!(before, f.tree(), "--dry-run must not touch the filesystem");
 
     // Every fan-out the dry run promised, the real run delivers verbatim.
@@ -623,7 +635,7 @@ fn dry_run_of_a_source_changes_nothing_and_previews_the_real_run() {
         .assert_stdout_has(&format!("source: research — Sourced from {path} (skills)"))
         .assert_stdout_has(&format!("would link {} → {path}", commons_entry.display()))
         .assert_stdout_has("would link into claude (.claude/skills)")
-        .assert_stdout_has("would link into codex (.codex/skills)");
+        .assert_stdout_has("would link into pi (.pi/agent/skills)");
     assert_eq!(before, f.tree(), "--dry-run must not touch the filesystem");
 
     // Every fan-out the dry run promised, the real run delivers verbatim.
@@ -698,7 +710,7 @@ fn dry_run_changes_nothing_and_previews_the_real_run() {
         .assert_stdout_has("absorb: local from claude into the Commons (skills)")
         .assert_stdout_has(&format!("would move {path} into the Commons"))
         .assert_stdout_has(&format!("would leave a link at {path} → "))
-        .assert_stdout_has("would link into codex (.codex/skills)");
+        .assert_stdout_has("would link into pi (.pi/agent/skills)");
     assert_eq!(before, f.tree(), "--dry-run must not touch the filesystem");
 
     // Every fan-out the dry run promised, the real run delivers verbatim.

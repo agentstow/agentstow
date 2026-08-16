@@ -102,6 +102,29 @@ fn a_foreign_link_is_reported_without_demanding_action() {
 }
 
 #[test]
+fn a_leftover_link_in_a_flipped_agents_legacy_dir_is_actionable_until_pruned() {
+    let f = machine();
+    f.commons_skill("research");
+    f.run(&["sync"]).assert_clean();
+    // What the pre-flip registry fanned out into codex's dir: codex reads the
+    // Commons natively now, and still reads this — a live duplicate.
+    f.symlink(".codex/skills/research", "../../.agents/skills/research");
+
+    f.run(&["status"])
+        .assert_code(2)
+        .assert_stdout_has("codex (.codex/skills)")
+        .assert_stdout_has("duplicate")
+        .assert_stdout_has("leftover fan-out link");
+
+    // Sync prunes it; the machine converges to clean.
+    f.run(&["sync"]).assert_clean();
+    f.run(&["status"])
+        .assert_code(0)
+        .assert_stdout_has("in sync")
+        .assert_stdout_lacks("codex (.codex/skills)");
+}
+
+#[test]
 fn json_carries_the_same_facts_on_a_clean_stdout() {
     let f = machine();
     f.commons_skill("research");

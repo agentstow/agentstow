@@ -44,16 +44,25 @@ pub fn run(env: &Env, config: &Config, r: &mut Reporter, as_json: bool) -> i32 {
         }
 
         for target in &resolved {
-            let Some(dir) = target.fanout_dir(*family) else {
-                continue;
-            };
-            let items = link::survey(&env.in_home(dir), commons.root(), &scan.entries);
-            targets.push(TargetReport {
-                agent: target.name.clone(),
-                family: family.name(),
-                dir: dir.to_string(),
-                items,
-            });
+            if let Some(dir) = target.fanout_dir(*family) {
+                let items = link::survey(&env.in_home(dir), commons.root(), &scan.entries);
+                targets.push(TargetReport {
+                    agent: target.name.clone(),
+                    family: family.name(),
+                    dir: dir.to_string(),
+                    items,
+                });
+            } else if let Some(dir) = target.legacy_dir(*family) {
+                // Leftover links of ours in a flipped agent's legacy dir are
+                // live duplicates — counted actionable until sync prunes them.
+                let items = link::survey_legacy(&env.in_home(dir), commons.root());
+                targets.push(TargetReport {
+                    agent: target.name.clone(),
+                    family: family.name(),
+                    dir: dir.to_string(),
+                    items,
+                });
+            }
         }
     }
 

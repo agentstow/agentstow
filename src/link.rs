@@ -190,6 +190,10 @@ pub enum State {
     Stale,
     /// Our link, pointing at a Commons entry that no longer exists.
     Dangling,
+    /// Our link in a legacy fan-out directory the agent reads *beside* the
+    /// Commons — a live duplicate of the entry it points at, pruned so each
+    /// skill is seen once.
+    Duplicate,
     /// A real object shadowing a Commons entry, byte-identical to it.
     VariantIdentical,
     /// A real object shadowing a Commons entry, deliberately different.
@@ -201,7 +205,10 @@ pub enum State {
 impl State {
     /// Whether `sync` changes the filesystem for this state.
     pub fn needs_change(&self) -> bool {
-        matches!(self, State::Missing | State::Stale | State::Dangling)
+        matches!(
+            self,
+            State::Missing | State::Stale | State::Dangling | State::Duplicate
+        )
     }
 
     /// Whether the user has something to act on. A diverged Variant is a
@@ -217,6 +224,7 @@ impl State {
             State::Missing => "missing",
             State::Stale => "stale",
             State::Dangling => "dangling",
+            State::Duplicate => "duplicate",
             State::VariantIdentical => "variant-identical",
             State::VariantDiverged => "variant",
             State::Foreign => "foreign",
@@ -230,6 +238,7 @@ impl State {
             State::Missing => "not linked yet",
             State::Stale => "not in canonical form",
             State::Dangling => "Commons entry is gone",
+            State::Duplicate => "the agent reads the Commons natively — leftover fan-out link",
             State::VariantIdentical => "identical to the Commons — could be re-linked",
             State::VariantDiverged => "left alone",
             State::Foreign => "not ours — left alone",
@@ -338,9 +347,34 @@ pub fn apply(item: &Item) -> io::Result<()> {
             fs::remove_file(&item.path)?;
             create_symlink(text, &item.path)
         }
-        State::Dangling => fs::remove_file(&item.path),
+        State::Dangling | State::Duplicate => fs::remove_file(&item.path),
         _ => Ok(()),
     }
+}
+
+/// Survey a legacy fan-out directory — one a Native agent still reads beside
+/// the Commons. Prune-only: every link of ours, live or dangling, is a
+/// [`State::Duplicate`] to remove; Foreign links and real objects are not even
+/// named, because a directory agentstow no longer fans out into is not its
+/// business to narrate — only to leave. An absent directory surveys empty,
+/// and nothing here ever creates one.
+pub fn survey_legacy(target_dir: &Path, commons: &Path) -> Vec<Item> {
+    let mut items = Vec::new();
+    if let Ok(read) = fs::read_dir(target_dir) {
+        for found in read.flatten() {
+            let path = found.path();
+            if let Found::Ours { .. } = classify(&path, commons) {
+                items.push(Item {
+                    name: found.file_name().to_string_lossy().into_owned(),
+                    path,
+                    state: State::Duplicate,
+                    canonical: None,
+                });
+            }
+        }
+    }
+    items.sort_by(|a, b| a.path.cmp(&b.path));
+    items
 }
 
 /// Whether two paths hold byte-identical content — used to tell an accidental

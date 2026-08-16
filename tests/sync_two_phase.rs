@@ -15,6 +15,8 @@ fn machine() -> Fixture {
     f.agent(".claude");
     f.agent(".codex");
     f.agent(".gemini");
+    // A second skills fan-out target: codex reads the Commons natively now.
+    f.agent(".pi");
     f
 }
 
@@ -156,7 +158,7 @@ fn a_write_failure_reports_continues_and_a_rerun_converges() {
     // The failed write is reported, the remaining operations still ran.
     out.assert_code(1).assert_stderr_has("cannot fix");
     assert!(
-        f.is_symlink(".codex/skills/research"),
+        f.is_symlink(".pi/agent/skills/research"),
         "a write failure must not cancel the rest of the plan"
     );
     assert!(!f.present(".claude/skills/research"));

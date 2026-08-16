@@ -8,7 +8,7 @@ use common::Fixture;
 
 fn machine() -> Fixture {
     let f = Fixture::new();
-    for root in [".claude", ".gemini", ".codex"] {
+    for root in [".claude", ".gemini", ".codex", ".pi"] {
         f.agent(root);
     }
     f
@@ -181,8 +181,30 @@ fn revert_strips_every_family_and_touches_nothing_else() {
     assert!(f.is_real_dir(".claude/skills"));
 
     // Other agents were never in scope.
-    assert!(f.is_symlink(".codex/skills/research"));
+    assert!(f.is_symlink(".pi/agent/skills/research"));
     assert!(f.is_symlink(".codex/AGENTS.md"));
+}
+
+#[test]
+fn revert_strips_our_leftovers_from_a_flipped_agents_legacy_dir() {
+    // Codex takes no skills fan-out any more, but links an earlier registry
+    // put in .codex/skills are still agentstow's to remove on offboarding.
+    let f = machine();
+    f.commons_skill("research");
+    f.symlink(".codex/skills/research", "../../.agents/skills/research");
+    f.file(".codex/skills/handmade/SKILL.md", "codex's own\n");
+
+    config(&f, "[targets]\ncodex = false\n");
+    let out = f.run(&["revert", "codex"]);
+
+    out.assert_clean()
+        .assert_stdout_has("removed .codex/skills/research");
+    assert!(!f.present(".codex/skills/research"));
+    assert_eq!(
+        f.contents(".codex/skills/handmade/SKILL.md"),
+        "codex's own\n",
+        "the agent's own content survives"
+    );
 }
 
 #[test]

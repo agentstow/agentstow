@@ -67,9 +67,14 @@ pub fn run(env: &Env, config: &Config, r: &mut Reporter, name: &str) -> i32 {
     let commons = Commons::new(env.commons());
     let mut removed = 0usize;
 
-    // Family by family, in the order sync writes them.
+    // Family by family, in the order sync writes them. A flipped agent's
+    // legacy fan-out dir still holds links of ours to strip — "everything
+    // agentstow put into one target" includes what an earlier registry put.
     for family in Family::ALL {
-        let Some(dir) = target.fanout_dir(*family) else {
+        let Some(dir) = target
+            .fanout_dir(*family)
+            .or_else(|| target.legacy_dir(*family))
+        else {
             continue;
         };
         removed += remove_links(env, &env.in_home(dir), commons.root(), r);

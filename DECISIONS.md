@@ -907,3 +907,51 @@ server. So a name absent from the Commons is never deleted (that remains
 `mcp remove`'s job, by explicit request), while a name present and marked
 disabled has its renders removed by name through the same `strip` primitive
 `mcp remove` uses; until then `status` counts each leftover as actionable.
+
+## 2026-08-16 — Native flips for codex, cursor and gemini; legacy dirs prune
+
+Three registry rows flip on primary-doc evidence, each verified 2026-08-16
+against the vendor's own documentation and recorded in the row comment. Codex:
+the official skills doc (https://developers.openai.com/codex/skills) lists
+user-level `$HOME/.agents/skills` unconditionally, and the shipping source
+(codex-rs host_roots.rs) confirms it — while still reading `$CODEX_HOME/skills`
+as a "deprecated user skills location, kept for backward compat". Cursor:
+https://cursor.com/docs/context/skills says skills are loaded automatically
+from `~/.agents/skills/`, plus the legacy-compat `~/.cursor/skills/`,
+`~/.claude/skills/` and `~/.codex/skills/` — the worst duplication of all.
+Gemini CLI: user skills come from `~/.gemini/skills/` or the
+`~/.agents/skills/` alias with `skills.enabled` defaulting true
+(https://github.com/google-gemini/gemini-cli/blob/main/docs/cli/skills.md), so
+its row moves from None straight to Native; we never fanned skills out to it,
+so there is nothing to clean. Cline stays `Skills::None`: its docs
+(https://docs.cline.bot/customization/skills) list no `.agents` path at any
+level, support exists only in undocumented code that silently regressed once
+before, and skills launched behind an opt-in toggle — below ADR-0004's bar
+that a registry row must be true unconditionally. Hermes likewise stays
+FanOut for the reason its row already records.
+
+The stranded-links consequence needed more than a one-time cleanup note,
+because for codex and cursor the old fan-out dirs are not litter: both agents
+still read them beside the Commons, so every link of ours there is a live
+duplicate — the same skill seen twice. The registry therefore has to express
+"Native, with a legacy dir to clean": `Skills::Native` gains a
+`legacy: Option<&'static str>` field, and sync visits a legacy dir in
+prune-only mode — it removes links of ours (resolving into the Commons, the
+same `link::classify` identity every command uses), creates nothing, and
+touches nothing foreign; Foreign links and real content in a legacy dir are
+not even named, since a directory agentstow no longer fans out into is not
+its business to narrate. The behavior is stateless and converges: `status`
+counts each leftover as actionable (the disabled-server pattern from the MCP
+decision above — the Commons still claims the name the link points at) until
+a sync prunes it, after which the dir drops out of every report. The prune is
+a new `link::State::Duplicate` riding the existing survey/apply machinery, so
+sync and status agree by construction; `revert` sweeps the legacy dir too,
+because "everything agentstow put into one target" includes what an earlier
+registry put; adopt's fan-out skips Native agents as before, flipped ones
+included; `doctor` names the arrangement in the capability line — `skills
+native (reads the Commons; cleans .codex/skills)`.
+
+Out of scope but recorded: Amp, Copilot CLI and Kimi also read
+`~/.agents/skills` per the 2026-08 research, but have no registry rows —
+adding agents is a separate change (a data-only row each), and they are the
+natural next candidates.

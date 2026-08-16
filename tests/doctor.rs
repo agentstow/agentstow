@@ -46,6 +46,23 @@ fn reports_the_capabilities_of_a_detected_agent() {
 }
 
 #[test]
+fn names_the_legacy_dir_a_flipped_native_agent_still_reads() {
+    // Codex and cursor read ~/.agents/skills natively (flipped 2026-08-16)
+    // but still read their old fan-out dirs, which sync prunes; gemini is
+    // Native with nothing to clean.
+    let f = Fixture::new();
+    f.agent(".codex");
+    f.agent(".cursor");
+    f.agent(".gemini");
+
+    f.run(&["doctor"])
+        .assert_clean()
+        .assert_stdout_has("skills native (reads the Commons; cleans .codex/skills)")
+        .assert_stdout_has("skills native (reads the Commons; cleans .cursor/skills)")
+        .assert_stdout_has("skills native (reads the Commons)\n");
+}
+
+#[test]
 fn creates_nothing() {
     let f = Fixture::new();
     f.agent(".claude");

@@ -263,7 +263,7 @@ fn report_commons_override(env: &Env, config: &Config, r: &mut Reporter) {
     let native: Vec<&str> = target::resolve(env, config)
         .iter()
         .filter_map(|t| t.agent)
-        .filter(|a| a.skills == Skills::Native)
+        .filter(|a| matches!(a.skills, Skills::Native { .. }))
         .map(|a| a.name)
         .collect();
     if native.is_empty() {

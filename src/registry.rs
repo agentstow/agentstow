@@ -15,8 +15,12 @@ use crate::family::Family;
 pub enum Skills {
     /// Symlink fan-out into this home-relative directory.
     FanOut(&'static str),
-    /// The agent reads the Commons directly; nothing to do.
-    Native,
+    /// The agent reads the Commons directly; nothing to fan out. `legacy`
+    /// names a fan-out directory an earlier registry used and the agent still
+    /// reads, making our old links there live duplicates — sync visits it in
+    /// prune-only mode: it removes links of ours, creates nothing, and touches
+    /// nothing foreign.
+    Native { legacy: Option<&'static str> },
     /// The agent has no skill surface.
     None,
 }
@@ -161,6 +165,19 @@ impl Agent {
         }
     }
 
+    /// The fan-out directory a Native agent once took for a family and still
+    /// reads beside the Commons — visited by sync in prune-only mode, never
+    /// written into. Only skills carry one today.
+    pub fn legacy_dir(&self, family: Family) -> Option<&'static str> {
+        match family {
+            Family::Skills => match self.skills {
+                Skills::Native { legacy } => legacy,
+                _ => None,
+            },
+            Family::Commands | Family::Agents => None,
+        }
+    }
+
     /// Human-readable capability summary, in family order.
     pub fn capabilities(&self) -> Vec<(&'static str, String)> {
         vec![
@@ -177,7 +194,10 @@ impl Agent {
 fn describe_skills(c: Skills) -> String {
     match c {
         Skills::FanOut(dir) => format!("fan-out → {dir}"),
-        Skills::Native => "native (reads the Commons)".into(),
+        Skills::Native { legacy: None } => "native (reads the Commons)".into(),
+        Skills::Native { legacy: Some(dir) } => {
+            format!("native (reads the Commons; cleans {dir})")
+        }
         Skills::None => "none".into(),
     }
 }
@@ -247,7 +267,16 @@ pub const AGENTS: &[Agent] = &[
     Agent {
         name: "codex",
         root: ".codex",
-        skills: Skills::FanOut(".codex/skills"),
+        // Codex reads user-level ~/.agents/skills unconditionally — the
+        // official skills doc lists it with no toggle
+        // (https://developers.openai.com/codex/skills, verified 2026-08-16),
+        // and codex-rs host_roots.rs ships it. The same source still reads
+        // $CODEX_HOME/skills as a "deprecated user skills location, kept for
+        // backward compat", so links we fanned out there are live duplicates,
+        // not litter — sync prunes ours from the legacy dir.
+        skills: Skills::Native {
+            legacy: Some(".codex/skills"),
+        },
         instructions: Instructions::Symlink(".codex/AGENTS.md"),
         mcp: Mcp::KeyMerge {
             file: ".codex/config.toml",
@@ -268,7 +297,7 @@ pub const AGENTS: &[Agent] = &[
         // OpenCode scans ~/.agents/skills natively. The Commons path is an interop
         // contract other agents hardcode (ADR-0004), not agentstow's private
         // choice, so fan-out here would only create duplicate-name warnings.
-        skills: Skills::Native,
+        skills: Skills::Native { legacy: None },
         instructions: Instructions::Symlink(".config/opencode/AGENTS.md"),
         mcp: Mcp::KeyMerge {
             file: ".config/opencode/opencode.json",
@@ -296,7 +325,7 @@ pub const AGENTS: &[Agent] = &[
         root: ".omp",
         // Reads ~/.agents/skills directly (ADR-0004); it keeps no skills
         // directory of its own, so there is nothing to fan out into.
-        skills: Skills::Native,
+        skills: Skills::Native { legacy: None },
         instructions: Instructions::Symlink(".omp/agent/AGENTS.md"),
         mcp: Mcp::NativeViaDiscovery,
         commands: Commands::NativeViaDiscovery,
@@ -336,8 +365,12 @@ pub const AGENTS: &[Agent] = &[
     Agent {
         name: "gemini",
         root: ".gemini",
-        // Gemini has no skill surface — it uses extensions instead.
-        skills: Skills::None,
+        // Gemini CLI reads user skills from ~/.gemini/skills or the
+        // ~/.agents/skills alias, and `skills.enabled` defaults to true
+        // (https://github.com/google-gemini/gemini-cli/blob/main/docs/cli/skills.md,
+        // verified 2026-08-16). agentstow never fanned skills out to gemini,
+        // so there is no legacy dir to clean.
+        skills: Skills::Native { legacy: None },
         instructions: Instructions::Symlink(".gemini/GEMINI.md"),
         mcp: Mcp::KeyMerge {
             file: ".gemini/settings.json",
@@ -358,7 +391,15 @@ pub const AGENTS: &[Agent] = &[
     Agent {
         name: "cursor",
         root: ".cursor",
-        skills: Skills::FanOut(".cursor/skills"),
+        // Cursor loads skills automatically from user-level ~/.agents/skills/
+        // (https://cursor.com/docs/context/skills, verified 2026-08-16) — and
+        // also from the legacy-compat ~/.cursor/skills/, ~/.claude/skills/ and
+        // ~/.codex/skills/, the worst duplication of all: a fanned-out link
+        // here is read alongside the Commons entry it points at, so sync
+        // prunes ours from the legacy dir instead.
+        skills: Skills::Native {
+            legacy: Some(".cursor/skills"),
+        },
         // Cursor's user-level rules live in app-local storage, out of scope.
         instructions: Instructions::None,
         mcp: Mcp::KeyMerge {
@@ -400,6 +441,12 @@ pub const AGENTS: &[Agent] = &[
     Agent {
         name: "cline",
         root: ".cline",
+        // Cline stays None: its skills docs
+        // (https://docs.cline.bot/customization/skills, verified 2026-08-16)
+        // list no .agents path at any level, the launch put skills behind an
+        // opt-in toggle, and ~/.agents support exists only in undocumented
+        // code that silently regressed once before — below ADR-0004's bar
+        // that a registry row must be true unconditionally.
         skills: Skills::None,
         instructions: Instructions::None,
         mcp: Mcp::KeyMerge {

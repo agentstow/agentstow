@@ -59,15 +59,25 @@ impl Plan {
             warnings.extend(scan.issues.iter().map(ToString::to_string));
 
             for target in &targets {
-                let Some(dir) = target.fanout_dir(*family) else {
-                    continue;
-                };
-                let items = link::survey(&env.in_home(dir), commons.root(), &scan.entries);
-                links.push(LinkPlan {
-                    agent: target.name.clone(),
-                    dir: dir.to_string(),
-                    items,
-                });
+                if let Some(dir) = target.fanout_dir(*family) {
+                    let items = link::survey(&env.in_home(dir), commons.root(), &scan.entries);
+                    links.push(LinkPlan {
+                        agent: target.name.clone(),
+                        dir: dir.to_string(),
+                        items,
+                    });
+                } else if let Some(dir) = target.legacy_dir(*family) {
+                    // A flipped agent's old fan-out dir: the agent reads it
+                    // *and* the Commons, so our links there are live
+                    // duplicates. Prune-only — remove ours, create nothing,
+                    // touch nothing foreign.
+                    let items = link::survey_legacy(&env.in_home(dir), commons.root());
+                    links.push(LinkPlan {
+                        agent: target.name.clone(),
+                        dir: dir.to_string(),
+                        items,
+                    });
+                }
             }
         }
 

@@ -4,7 +4,9 @@ mod common;
 
 use common::Fixture;
 
-/// A machine with every skills fan-out agent plus one native agent.
+/// A machine with every skills fan-out agent plus the native agents —
+/// including codex and cursor, flipped Native once their docs promised
+/// unconditional ~/.agents/skills reads (2026-08-16).
 fn machine() -> Fixture {
     let f = Fixture::new();
     f.agent(".claude");
@@ -27,9 +29,7 @@ fn links_every_commons_skill_into_every_fan_out_target() {
 
     for target in [
         ".claude/skills",
-        ".codex/skills",
         ".pi/agent/skills",
-        ".cursor/skills",
         ".openclaw/skills",
         ".hermes/skills",
     ] {
@@ -48,6 +48,7 @@ fn links_every_commons_skill_into_every_fan_out_target() {
 #[test]
 fn native_agents_receive_no_links() {
     let f = machine();
+    f.agent(".gemini");
     f.commons_skill("research");
 
     f.run(&["sync"]).assert_clean();
@@ -57,19 +58,109 @@ fn native_agents_receive_no_links() {
         !f.exists(".config/opencode/skills"),
         "native agents must not get a skills directory"
     );
+    // Codex and cursor read ~/.agents/skills themselves now — and still read
+    // their old fan-out dirs, so a link there would be seen twice.
+    for legacy in [".codex/skills", ".cursor/skills"] {
+        assert!(
+            !f.exists(legacy),
+            "{legacy} must not be created for a flipped Native agent"
+        );
+    }
+    // Gemini reads the Commons natively too, and never had a fan-out dir.
+    assert!(!f.exists(".gemini/skills"));
 }
 
 #[test]
 fn agents_without_a_skill_surface_receive_nothing() {
     let f = Fixture::new();
-    f.agent(".gemini");
     f.agent(".roo");
+    f.agent(".cline");
     f.commons_skill("research");
 
     f.run(&["sync"]).assert_clean();
 
-    assert!(!f.exists(".gemini/skills"));
     assert!(!f.exists(".roo/skills"));
+    assert!(!f.exists(".cline/skills"));
+}
+
+#[test]
+fn sync_prunes_our_leftover_links_from_a_flipped_agents_legacy_dir() {
+    let f = machine();
+    f.commons_skill("research");
+    // What the pre-flip registry fanned out: canonical links of ours, which
+    // codex and cursor still read beside the Commons — live duplicates.
+    f.symlink(".codex/skills/research", "../../.agents/skills/research");
+    f.symlink(".cursor/skills/research", "../../.agents/skills/research");
+
+    let out = f.run(&["sync"]);
+
+    out.assert_clean()
+        .assert_stdout_has("codex (.codex/skills)")
+        .assert_stdout_has("cursor (.cursor/skills)")
+        .assert_stdout_has("duplicate research");
+    assert!(
+        !f.present(".codex/skills/research"),
+        "our leftover link is a live duplicate — pruned"
+    );
+    assert!(!f.present(".cursor/skills/research"));
+    // The directory itself is the agent's, and stays.
+    assert!(f.is_real_dir(".codex/skills"));
+}
+
+#[test]
+fn the_legacy_prune_leaves_foreign_links_and_real_content_alone() {
+    let f = machine();
+    f.commons_skill("research");
+    f.symlink(".codex/skills/research", "../../.agents/skills/research");
+    // A link somebody else made, and the agent's own real skill.
+    let elsewhere = f.root().join("their-skills").join("theirs");
+    std::fs::create_dir_all(&elsewhere).unwrap();
+    f.symlink(".codex/skills/theirs", &elsewhere.display().to_string());
+    f.file(".codex/skills/handmade/SKILL.md", "codex's own\n");
+
+    f.run(&["sync"]).assert_clean();
+
+    assert!(!f.present(".codex/skills/research"), "ours goes");
+    assert_eq!(
+        f.link_text(".codex/skills/theirs"),
+        elsewhere.display().to_string(),
+        "a Foreign link is never touched"
+    );
+    assert_eq!(
+        f.contents(".codex/skills/handmade/SKILL.md"),
+        "codex's own\n",
+        "real content in the legacy dir is the agent's own"
+    );
+}
+
+#[test]
+fn a_pruned_legacy_dir_converges_and_a_second_sync_is_silent() {
+    let f = machine();
+    f.commons_skill("research");
+    f.symlink(".codex/skills/research", "../../.agents/skills/research");
+    f.run(&["sync"]).assert_clean();
+    let after = f.tree();
+
+    f.run(&["sync"])
+        .assert_clean()
+        .assert_stdout_has("up to date");
+    assert_eq!(after, f.tree(), "the prune must converge");
+}
+
+#[test]
+fn dry_run_reports_the_legacy_prune_without_removing_anything() {
+    let f = machine();
+    f.commons_skill("research");
+    f.symlink(".codex/skills/research", "../../.agents/skills/research");
+    // Fan-out work is already done, so the prune is the whole plan.
+    f.run(&["sync"]).assert_clean();
+    f.symlink(".codex/skills/research", "../../.agents/skills/research");
+    let before = f.tree();
+
+    let out = f.run(&["sync", "--dry-run"]);
+
+    out.assert_clean().assert_stdout_has("duplicate research");
+    assert_eq!(before, f.tree(), "--dry-run must not touch the filesystem");
 }
 
 #[test]
@@ -172,7 +263,7 @@ fn preserves_a_variant_directory() {
         "claude-specific variant\n"
     );
     // Other agents still get the Commons copy.
-    assert!(f.is_symlink(".codex/skills/plannotator"));
+    assert!(f.is_symlink(".pi/agent/skills/plannotator"));
 }
 
 #[test]

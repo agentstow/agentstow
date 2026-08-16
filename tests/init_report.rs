@@ -9,10 +9,13 @@ fn populated() -> Fixture {
     let f = Fixture::bare();
     f.agent(".claude");
     f.agent(".codex");
+    f.agent(".pi");
     f.agent(".config/opencode");
-    // Hand-written skills nobody has adopted yet.
+    // Hand-written skills nobody has adopted yet. pi carries the second one:
+    // codex takes no skills fan-out since the 2026-08-16 Native flip, so its
+    // dir is no longer an adoption surface init scans.
     f.file(".claude/skills/local-thing/SKILL.md", "mine\n");
-    f.file(".codex/skills/another/SKILL.md", "also mine\n");
+    f.file(".pi/agent/skills/another/SKILL.md", "also mine\n");
     // A command, likewise.
     f.file(".claude/commands/ship.md", "ship it\n");
     // MCP servers configured by hand.
@@ -100,7 +103,7 @@ fn init_still_creates_only_the_commons() {
     assert!(f.commons().join("skills").is_dir());
     for agent in agentstow::registry::AGENTS {
         let root = f.path(agent.root);
-        if !["claude", "codex", "opencode"].contains(&agent.name) {
+        if !["claude", "codex", "pi", "opencode"].contains(&agent.name) {
             assert!(!root.exists(), "init created a root for {}", agent.name);
         }
     }

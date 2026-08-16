@@ -50,6 +50,13 @@ impl Target {
             .map(|(_, dir)| dir.as_str())
     }
 
+    /// The fan-out directory this Target once took for a family and still
+    /// reads beside the Commons — sync visits it in prune-only mode. Only
+    /// registry rows carry one; config-defined targets never do.
+    pub fn legacy_dir(&self, family: Family) -> Option<&'static str> {
+        self.agent.and_then(|agent| agent.legacy_dir(family))
+    }
+
     pub fn detected(&self, home: &Path) -> bool {
         home.join(&self.root).is_dir()
     }
