@@ -991,3 +991,18 @@ actionable only when identical", since status does list a diverged Variant —
 it just never counts it. CLI help gained the three-mechanic long help on
 adopt, and doctor's summary line now matches the README's ("installed agents,
 Commons hygiene, Sourced entries").
+
+## 2026-08-16 — Site v2 copy: Windows claim reversed, #store anchor renamed
+
+The site-to-v2 pass followed the README as truth beyond the enumerated copy
+changes: the pages said "No Windows" / "Windows is not supported", which the
+shipped 2.x contradicts, so the install headings now read "macOS, Linux and
+Windows" and the warning became the README's Developer-Mode symlink note.
+The docs section id `#store` was renamed `#commons` on both languages —
+old `#store` deep links break, accepted so no `store` token survives and the
+en/zh fragment parity rule holds. "One file seen from ten places" stays: the
+v2 README keeps that phrase, so it is not an agent count. The fan-out example
+swapped `~/.codex/skills` for `~/.pi/agent/skills` (Codex is Native now), the
+landing coverage matrix grew OpenClaw and Hermes rows from `src/registry.rs`,
+and zh keeps 子智能体 as prose for the things while every directory reads
+`agents/`, with the Commons glossed once per page as Commons（共享配置区）.
