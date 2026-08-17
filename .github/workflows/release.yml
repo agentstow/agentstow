@@ -1,10 +1,12 @@
 name: release
 
-# Cross-builds every supported target, assembles the npm packages, and proves
-# they install offline. On a v* tag push — and only then — the publish jobs
-# also push to crates.io and npm via OIDC trusted publishing: no long-lived
-# tokens, credentials are minted per run. The one-time registry-side setup and
-# the manual fallback live in docs/release-runbook.md.
+# Cross-builds every supported target once, then packages that same binary
+# every way it ships — npm packages, PyPI wheels, release tarballs, and the
+# Homebrew formula — proving each installs before anything is published. On a
+# v* tag push, and only then, the publish jobs push to crates.io, npm and PyPI
+# via OIDC trusted publishing: no long-lived tokens, credentials minted per
+# run. The one-time registry-side setup and the manual fallback live in
+# docs/release-runbook.md.
 
 on:
   push:
@@ -153,6 +155,64 @@ jobs:
           rustup default stable
           rustc --version
       - run: cargo publish --dry-run --locked
+
+  wheels:
+    name: assemble and verify the wheels
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+      - name: put each binary where the assembler expects it
+        run: |
+          set -euo pipefail
+          declare -A TRIPLE=(
+            [darwin-arm64]=aarch64-apple-darwin
+            [darwin-x64]=x86_64-apple-darwin
+            [linux-x64]=x86_64-unknown-linux-gnu
+            [linux-arm64]=aarch64-unknown-linux-gnu
+            [win32-x64]=x86_64-pc-windows-msvc
+            [win32-arm64]=aarch64-pc-windows-msvc
+          )
+          for target in "${!TRIPLE[@]}"; do
+            exe=""; case "$target" in win32-*) exe=".exe" ;; esac
+            dir="target/${TRIPLE[$target]}/release"
+            mkdir -p "$dir"
+            cp "artifacts/binary-$target/agentstow$exe" "$dir/agentstow$exe"
+            chmod +x "$dir/agentstow$exe"
+          done
+      - name: assemble the wheels
+        run: scripts/build-wheels.py wheelhouse
+      - name: all six wheels are present
+        run: |
+          set -euo pipefail
+          count="$(ls wheelhouse/*.whl | wc -l)"
+          if [ "$count" -ne 6 ]; then
+            echo "expected 6 wheels, built $count"; ls wheelhouse; exit 1
+          fi
+      - name: the linux wheel installs and runs
+        # This runner is linux-x64, so the manylinux wheel is the one target
+        # whose install can actually be exercised here. It is also the check
+        # that would have caught a wheel whose binary lands non-executable.
+        run: |
+          set -euo pipefail
+          python -m venv /tmp/wheeltest
+          /tmp/wheeltest/bin/pip install --no-index wheelhouse/agentstow-*manylinux*x86_64.whl
+          test -x /tmp/wheeltest/bin/agentstow
+          /tmp/wheeltest/bin/agentstow --version
+      - name: metadata passes the check PyPI runs on upload
+        run: |
+          python -m pip install --quiet twine
+          python -m twine check wheelhouse/*.whl
+      - uses: actions/upload-artifact@v4
+        with:
+          name: wheels
+          path: wheelhouse
 
   guard:
     name: tag matches the crate version
@@ -338,3 +398,22 @@ jobs:
             publish "dist/$target"
           done
           publish dist/agentstow
+
+  publish-pypi:
+    name: publish to PyPI
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    needs: [package, crate, guard, wheels]
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write # OIDC exchange with PyPI — see the runbook
+      contents: read
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: wheels
+          path: dist
+      - uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          # Makes a re-run after a partial release idempotent, the way the npm
+          # and crates.io jobs skip versions already on their registries.
+          skip-existing: true

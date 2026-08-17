@@ -1124,3 +1124,52 @@ cut immediately after this — a release whose only content is the pipeline that
 produces it, which is also the first end-to-end proof that the `release` and
 `tap` jobs work against a real tag rather than against the v1.0.0 assets they
 were tested on.
+
+## 2026-08-16 — PyPI as a fourth channel: wheels packaged from the binaries we already build
+
+Asked to publish the CLI to PyPI. There was no Python package to publish —
+no `pyproject.toml`, no `setup.py`, not one `.py` file — so this was not a
+workflow-and-trust-entry job but a new distribution layer. The name `agentstow`
+was free on PyPI, and PyPI's *pending publisher* flow means the project is
+created by the first OIDC upload, so unlike npm and crates.io this channel never
+needs a bootstrap publish and no token exists at any point.
+
+Two ways to make wheels for a Rust binary. maturin is the conventional answer
+and what ruff and uv use, but it compiles the crate itself, so it would have
+re-cross-built all six targets in a second matrix and roughly doubled release
+wall-clock. Chose instead to package the artifacts the `build` job already
+produces, which is the same shape as the npm launcher and the Homebrew formula:
+build once, package many. A wheel is a zip with a prescribed layout, so writing
+that layout is cheaper than building everything twice. The cost accepted is that
+platform tags — `macosx_11_0_arm64`, `manylinux_2_17_x86_64.manylinux2014_x86_64`,
+`win_amd64` and the rest — are hand-written, and a wrong tag fails as *no
+matching distribution* rather than as anything that names the cause. The `wheels`
+job installs the manylinux wheel on the runner to keep at least one tag honest.
+
+The wheels contain no Python. The binary sits in
+`agentstow-<version>.data/scripts/`, which pip installs directly onto PATH, so
+`pip install agentstow` and `uvx agentstow` reach the same binary as
+`npm install -g` with no interpreter shim between.
+
+The bug worth recording, because it is invisible until a user hits it: pip
+decides whether to install a file executable with `stat.S_ISREG(mode) and mode &
+0o111`. A zip entry written with a bare `0o755` has the execute bits but fails
+`S_ISREG`, so pip installed a **non-executable** `agentstow` into the venv's
+`bin/` — a command on PATH that cannot run. Nothing in building or validating
+the wheel catches it; `twine check` passed, the metadata was right, the zip
+looked right, and comparing byte-for-byte against a real maturin wheel was what
+located it (`0o100755` vs `0o755`). The fix is `stat.S_IFREG | 0o755`; the
+guard is `test -x` after a real `pip install` in CI, not a build-time check.
+
+Also guarded: `build-npm.sh` will fall back to the host binary for *any* target
+when the triple's directory is missing, which is harmless there but would seal a
+macOS binary into a linux wheel here. `build-wheels.py` restricts that fallback
+to the host's own target, because a wheel on PyPI can be yanked but never
+replaced.
+
+Deliberately not added: a `pyproject.toml`. Nothing builds from source on the
+Python side, and a manifest that does not describe how the artifact is made
+would be a decoy for the next person. The channel is documented in the runbook
+instead. Trusted publishing reuses `release.yml` and leaves the environment
+blank, matching the crates.io and npm entries rather than introducing this
+repo's first GitHub environment for one registry.

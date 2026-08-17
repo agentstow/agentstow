@@ -78,11 +78,15 @@
 <span class="c"># so it installs offline and inside a sandboxed CI</span>
 npm install -g agentstow
 
+<span class="c"># or the same binary as a PyPI wheel — no Python code, just the binary</span>
+pip install agentstow
+
 <span class="c"># or build from source — needs Rust 1.97 or newer</span>
 cargo install agentstow
 
 <span class="c"># or try it first, without installing anything</span>
 npx agentstow doctor
+uvx agentstow doctor
 
 <span class="c"># or on macOS and Linux, from the Homebrew tap in the repo itself</span>
 brew tap agentstow/tap https://github.com/agentstow/agentstow
@@ -96,6 +100,11 @@ brew install agentstow</pre>
       postinstall step and nothing to fetch beyond the binary itself, and
       <code>doctor</code> only reads — it reports the agents this machine has without
       creating a Commons.</p>
+      <p>The PyPI wheels contain no Python code at all — each one carries the same
+      compiled binary in the wheel's <code>scripts/</code> directory, which is how
+      <code>pip install</code> and <code>uvx</code> put a working <code>agentstow</code> on
+      PATH with no interpreter shim in between. There is one wheel per platform, so pip
+      resolves the right binary the same way npm picks the right optional dependency.</p>
       <p>The Homebrew tap lives in the agentstow repository itself rather than a separate
       <code>homebrew-agentstow</code> one, which is why it is tapped by URL rather than by
       the short <code>brew tap agentstow/agentstow</code> form. It installs the same

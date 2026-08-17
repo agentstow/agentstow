@@ -248,11 +248,15 @@ mcp (mcp.json)
 <pre><span class="c"># 预编译二进制 — 无需工具链，没有 postinstall 脚本</span>
 npm install -g agentstow
 
+<span class="c"># 或以 wheel 形式安装同一个二进制</span>
+pip install agentstow
+
 <span class="c"># 或从源码构建，需要 Rust 1.97+</span>
 cargo install agentstow
 
 <span class="c"># 或者先试用，无需安装</span>
 npx agentstow doctor
+uvx agentstow doctor
 
 <span class="c"># 或在 macOS 与 Linux 上，从本仓库自带的 tap 安装</span>
 brew tap agentstow/tap https://github.com/agentstow/agentstow

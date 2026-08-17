@@ -75,17 +75,22 @@
 <span class="c"># 因此可以离线安装，也可以在沙箱化的 CI 里安装</span>
 npm install -g agentstow
 
+<span class="c"># 或以 PyPI wheel 形式安装同一个二进制 — 不含任何 Python 代码</span>
+pip install agentstow
+
 <span class="c"># 或从源码构建 — 需要 Rust 1.97 或更新版本</span>
 cargo install agentstow
 
 <span class="c"># 或者先试用，无需安装</span>
 npx agentstow doctor
+uvx agentstow doctor
 
 <span class="c"># 或在 macOS 与 Linux 上，从本仓库自带的 Homebrew tap 安装</span>
 brew tap agentstow/tap https://github.com/agentstow/agentstow
 brew trust agentstow/tap
 brew install agentstow</pre>
       <p>npm 包只是一个小启动器；真正的二进制按目标平台各打一个包，声明为可选依赖，npm 只会安装与你机器匹配的那一个。在没有预编译二进制的平台上，你会得到一条说明它找过什么、并指向 <code>cargo install</code> 的消息，而不是文件缺失的崩溃。<code>npx</code> 能直接跑通也是同一个设计的结果：没有 postinstall 步骤，除了二进制本身没有任何东西需要下载；而 <code>doctor</code> 只读——它会报告这台机器上装了哪些智能体，不会创建 Commons。</p>
+      <p>PyPI wheel 里没有任何 Python 代码——每个 wheel 都把同一个编译好的二进制放在 wheel 的 <code>scripts/</code> 目录里，因此 <code>pip install</code> 和 <code>uvx</code> 会直接把可用的 <code>agentstow</code> 放到 PATH 上，中间不经过任何解释器包装层。每个平台一个 wheel，pip 解析正确二进制的方式，和 npm 挑选正确的可选依赖是一样的。</p>
       <p>Homebrew tap 就放在 agentstow 仓库自身，而不是另开一个 <code>homebrew-agentstow</code> 仓库，因此需要按 URL 添加，不能用简写的 <code>brew tap agentstow/agentstow</code>。它安装的正是发布流程附加到 GitHub Release 上的预编译二进制，并对照已发布的 <code>SHA256SUMS.txt</code> 校验；formula 由 CI 在每个标签上重新生成，因此它只可能指向真实存在的产物。Homebrew 6 在你信任之前拒绝加载第三方 tap，这就是那行 <code>brew trust</code> 的用途。</p>
       <div class="note warn">
         <p><strong>在 Windows 上</strong>，创建符号链接需要开发者模式（设置 → 系统 → 开发者选项）或提升权限的 shell；<code>sync</code> 在无法创建链接时会明确说明这一点。</p>

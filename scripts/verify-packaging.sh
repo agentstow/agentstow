@@ -118,6 +118,31 @@ else
   fail "cargo publish --dry-run failed"
 fi
 
+say "wheel builds, installs, and is executable"
+# Only the host's wheel can be built here — build-wheels.py refuses to seal the
+# host binary into another platform's wheel. Installing it for real is the
+# point: a wheel whose binary lands non-executable builds and validates
+# perfectly, and only `pip install` then `test -x` catches it.
+if command -v python3 >/dev/null 2>&1; then
+  if "$ROOT/scripts/build-wheels.py" "$WORK/wheelhouse" >"$WORK/wheels.log" 2>&1; then
+    whl="$(ls "$WORK"/wheelhouse/*.whl 2>/dev/null | head -1)"
+    if [ -z "$whl" ]; then
+      cat "$WORK/wheels.log" >&2
+      fail "no wheel built for the host target"
+    fi
+    python3 -m venv "$WORK/wheelvenv" >/dev/null 2>&1 || fail "could not create a venv"
+    "$WORK/wheelvenv/bin/pip" install --quiet --no-index "$whl" || fail "pip install of the wheel failed"
+    [ -x "$WORK/wheelvenv/bin/agentstow" ] || fail "the installed wheel binary is not executable"
+    "$WORK/wheelvenv/bin/agentstow" --version >/dev/null || fail "the installed wheel binary does not run"
+    echo "  $(basename "$whl"): installs and runs"
+  else
+    cat "$WORK/wheels.log" >&2
+    fail "build-wheels.py failed"
+  fi
+else
+  echo "  python3 not found — wheel check skipped"
+fi
+
 printf '\nLocal packaging checks passed.\n'
 if [ "$BLOCKED" -gt 0 ]; then
   printf '%d package(s) cannot be published yet — see docs/release-runbook.md.\n' "$BLOCKED"

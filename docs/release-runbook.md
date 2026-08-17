@@ -16,6 +16,12 @@ CI fails with an auth error until this exists.
 - **crates.io** — <https://crates.io/crates/agentstow/settings> → *Trusted
   Publishing* → *Add*: repository owner `agentstow`, repository name
   `agentstow`, workflow filename `release.yml`, environment left blank.
+- **PyPI** — <https://pypi.org/manage/account/publishing/> → *Add a new pending
+  publisher*: PyPI project name `agentstow`, owner `agentstow`, repository name
+  `agentstow`, workflow name `release.yml`, environment left blank. Register it
+  as a **pending** publisher *before* the first release: PyPI creates the
+  project on the first successful OIDC upload, so unlike npm and crates.io
+  there is no manual bootstrap publish and no token ever exists.
 - **npm** — for **each package** (`agentstow`, `@agentstow/darwin-arm64`,
   `@agentstow/darwin-x64`, `@agentstow/linux-arm64`, `@agentstow/linux-x64`,
   `@agentstow/win32-arm64`, `@agentstow/win32-x64`): package page → *Settings*
@@ -94,9 +100,9 @@ npm packages stay in lockstep by construction — a release is a one-line bump.
 3. Commit, tag `vX.Y.Z`, push the tag. The tag must match `Cargo.toml` — a
    `guard` job fails the run otherwise. The `release` workflow cross-builds
    all six targets, assembles the packages, installs them offline, dry-run
-   publishes, then publishes the crate and all seven npm packages, attaches
-   the six binaries to the GitHub Release, and commits the regenerated
-   Homebrew formula to main. The registry publish jobs run only on the tag
+   publishes, then publishes the crate, all seven npm packages and the six
+   PyPI wheels, attaches the six binaries to the GitHub Release, and commits
+   the regenerated Homebrew formula to main. The registry publish jobs run only on the tag
    push — never for `workflow_dispatch` or pull requests. The `release` and
    `tap` jobs are gated on the ref instead, so both also run for a
    `workflow_dispatch` made **at a v\* tag**: the binaries and the formula can
@@ -122,6 +128,38 @@ If CI publishing is unavailable, publish by hand from the workflow's
    resolves nothing and the binary is missing.
    `--access public` is required: scoped packages default to restricted.
    CI publishes in this same order.
+
+## The PyPI wheels
+
+`scripts/build-wheels.py` packages the **already-built** binaries into one wheel
+per platform. Nothing is compiled: there is no `pyproject.toml`, no maturin, and
+no Python code in the wheels — each carries the same binary the tarball and the
+npm package ship, in `agentstow-<version>.data/scripts/`, which pip installs
+straight onto PATH.
+
+Two things are easy to get wrong and are guarded in CI:
+
+- **The platform tag.** It is written by hand per target; get it wrong and pip
+  reports *no matching distribution* rather than anything pointing at the cause.
+  The `wheels` job installs the manylinux wheel on the runner to prove at least
+  one tag resolves.
+- **The executable bit.** pip decides with `stat.S_ISREG(mode) and mode & 0o111`,
+  so the zip entry needs `S_IFREG` set, not a bare `0o755`. Without it pip
+  installs a **non-executable** `agentstow` to the venv's `bin/` — a command on
+  PATH that cannot run, and one that `--version` in the build never catches
+  because the build never installs. The `wheels` job asserts `test -x` after a
+  real `pip install` for exactly this reason.
+
+**Manual fallback.** With the binaries staged under `target/<triple>/release/`:
+
+```sh
+scripts/build-wheels.py wheelhouse
+python -m twine upload wheelhouse/*.whl
+```
+
+A locally built wheel only ever contains the host's own binary — the script
+refuses to seal a host binary into another platform's wheel, since a wheel on
+PyPI can be yanked but never replaced.
 
 ## The Homebrew tap
 

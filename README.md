@@ -29,8 +29,11 @@ There is no state file. There never will be. The filesystem is the state.
 
 ```sh
 npm install -g agentstow      # prebuilt binary, macOS, Linux and Windows, no toolchain
+pip install agentstow         # the same binary, shipped as a wheel
 cargo install agentstow       # from source, needs Rust 1.97+
+
 npx agentstow doctor          # or try it first, without installing anything
+uvx agentstow doctor          # the same, if you reach for uv rather than npm
 ```
 
 On macOS and Linux there is also a Homebrew tap. It lives in this repository rather

@@ -284,11 +284,15 @@ mcp (mcp.json)
 <pre><span class="c"># prebuilt binary — no toolchain, no postinstall script</span>
 npm install -g agentstow
 
+<span class="c"># or the same binary as a wheel</span>
+pip install agentstow
+
 <span class="c"># or from source, needs Rust 1.97+</span>
 cargo install agentstow
 
 <span class="c"># or try it first, without installing anything</span>
 npx agentstow doctor
+uvx agentstow doctor
 
 <span class="c"># or on macOS and Linux, from the tap in the repo itself</span>
 brew tap agentstow/tap https://github.com/agentstow/agentstow
