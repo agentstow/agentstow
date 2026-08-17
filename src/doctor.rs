@@ -11,7 +11,7 @@ use std::os::unix::ffi::OsStrExt;
 use std::path::{Path, PathBuf};
 
 use crate::commons::{self, Commons};
-use crate::config::Config;
+use crate::config::{self, Config};
 use crate::env::Env;
 use crate::family::Family;
 use crate::link;
@@ -30,11 +30,24 @@ pub fn run(env: &Env, config: &Config, r: &mut Reporter) -> i32 {
     r.blank();
 
     if env.legacy_config_dir().is_dir() {
-        r.warn(format!(
-            "{} is no longer read — move agentstow.toml to {} and delete the directory",
-            env.legacy_config_dir().display(),
-            env.config_dir().display()
-        ));
+        // v1 kept both the config and the lock here, so the usual leftover is
+        // agentstow's own lock and no config at all. Telling that user to move
+        // a file they do not have reads as a broken instruction, and sends
+        // them looking for something that was never there.
+        if env.legacy_config_dir().join(config::FILE).is_file() {
+            r.warn(format!(
+                "{} is no longer read — move {} to {} and delete the directory",
+                env.legacy_config_dir().display(),
+                config::FILE,
+                env.config_dir().display()
+            ));
+        } else {
+            r.warn(format!(
+                "{} is no longer read and holds no {} — the directory can be deleted",
+                env.legacy_config_dir().display(),
+                config::FILE
+            ));
+        }
     }
 
     if commons.exists() {

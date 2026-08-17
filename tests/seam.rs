@@ -140,14 +140,30 @@ fn the_lock_lives_in_the_state_dir_and_the_legacy_dir_stays_absent() {
 }
 
 #[test]
-fn doctor_names_a_leftover_legacy_config_dir() {
+fn doctor_names_a_leftover_legacy_config_dir_without_inventing_a_config() {
     let f = Fixture::new();
     f.dir(".agentstow");
 
     let out = f.run(&["doctor"]);
 
+    // v1 kept its lock here as well as its config, so a leftover holding no
+    // agentstow.toml is the ordinary case for anyone upgrading. Naming a file
+    // that is not there sends them looking for something that never existed.
     out.assert_clean()
         .assert_stderr_has("no longer read")
+        .assert_stderr_has("can be deleted")
+        .assert_stderr_lacks("move agentstow.toml");
+}
+
+#[test]
+fn doctor_says_to_move_a_legacy_config_that_is_really_there() {
+    let f = Fixture::new();
+    f.file(".agentstow/agentstow.toml", "");
+
+    let out = f.run(&["doctor"]);
+
+    out.assert_clean()
+        .assert_stderr_has("move agentstow.toml")
         .assert_stderr_has(".config/agentstow");
 }
 
