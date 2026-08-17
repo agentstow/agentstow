@@ -12,23 +12,23 @@ class Agentstow < Formula
 
   on_macos do
     on_arm do
-      url "https://github.com/agentstow/agentstow/releases/download/v2.0.3/agentstow-2.0.3-darwin-arm64.tar.gz"
-      sha256 "612c0ba9a53cab4e307b31883aa71741fff463863331a363201a18ff3109d812"
+      url "https://github.com/agentstow/agentstow/releases/download/v2.0.4/agentstow-2.0.4-darwin-arm64.tar.gz"
+      sha256 "bbdbce507fa67554dd0bfd3eca809aef21d37cb13bfd37e1439c6b44916d6f37"
     end
     on_intel do
-      url "https://github.com/agentstow/agentstow/releases/download/v2.0.3/agentstow-2.0.3-darwin-x64.tar.gz"
-      sha256 "cb1505b1895780775ea26c6553c47506d47b3b548e51e4df78a5f000dcc00d2c"
+      url "https://github.com/agentstow/agentstow/releases/download/v2.0.4/agentstow-2.0.4-darwin-x64.tar.gz"
+      sha256 "d8dbd8869b28198e46ec442d5043435e92cfab9a87ec81209a64539639d7c014"
     end
   end
 
   on_linux do
     on_arm do
-      url "https://github.com/agentstow/agentstow/releases/download/v2.0.3/agentstow-2.0.3-linux-arm64.tar.gz"
-      sha256 "8f455c6a6886bc5a1c4ed96564b0840550b87c51c81eff4ca7fb702d90a00c01"
+      url "https://github.com/agentstow/agentstow/releases/download/v2.0.4/agentstow-2.0.4-linux-arm64.tar.gz"
+      sha256 "e4016a10975a435ab9a7e6475de3db0e9fcc3ccf1235e2c34b3b4f219bc8719f"
     end
     on_intel do
-      url "https://github.com/agentstow/agentstow/releases/download/v2.0.3/agentstow-2.0.3-linux-x64.tar.gz"
-      sha256 "0a894ec02f7009376316baa051939d76c38e99fb04750c3688901aad63d15d41"
+      url "https://github.com/agentstow/agentstow/releases/download/v2.0.4/agentstow-2.0.4-linux-x64.tar.gz"
+      sha256 "64d1a0cd34830c5872f8ec7bcc8c3a16fcc75086812ba4a2caefc06accbab7d2"
     end
   end
 
