@@ -125,16 +125,39 @@ say "wheel builds, installs, and is executable"
 # perfectly, and only `pip install` then `test -x` catches it.
 if command -v python3 >/dev/null 2>&1; then
   if "$ROOT/scripts/build-wheels.py" "$WORK/wheelhouse" >"$WORK/wheels.log" 2>&1; then
-    whl="$(ls "$WORK"/wheelhouse/*.whl 2>/dev/null | head -1)"
+    # Explicitly the platform wheel: py3-none-any sorts first and carries no
+    # binary, so a plain `head -1` would test the fallback and report the
+    # binary as broken.
+    whl="$(ls "$WORK"/wheelhouse/*.whl 2>/dev/null | grep -v 'py3-none-any' | head -1)"
+    fallback="$(ls "$WORK"/wheelhouse/*-py3-none-any.whl 2>/dev/null | head -1)"
     if [ -z "$whl" ]; then
       cat "$WORK/wheels.log" >&2
       fail "no wheel built for the host target"
     fi
+    [ -n "$fallback" ] || fail "the py3-none-any fallback wheel was not built"
     python3 -m venv "$WORK/wheelvenv" >/dev/null 2>&1 || fail "could not create a venv"
     "$WORK/wheelvenv/bin/pip" install --quiet --no-index "$whl" || fail "pip install of the wheel failed"
     [ -x "$WORK/wheelvenv/bin/agentstow" ] || fail "the installed wheel binary is not executable"
     "$WORK/wheelvenv/bin/agentstow" --version >/dev/null || fail "the installed wheel binary does not run"
     echo "  $(basename "$whl"): installs and runs"
+
+    # pip must prefer the platform wheel when both are offered, or every
+    # supported user would silently get the fallback instead of the binary.
+    python3 -m venv "$WORK/pickvenv" >/dev/null 2>&1 || fail "could not create a venv"
+    "$WORK/pickvenv/bin/pip" install --quiet --no-index \
+      --find-links "$WORK/wheelhouse" agentstow || fail "resolving from the wheelhouse failed"
+    "$WORK/pickvenv/bin/agentstow" --version >/dev/null \
+      || fail "pip chose the fallback over the platform wheel"
+    echo "  pip prefers the platform wheel over py3-none-any"
+
+    python3 -m venv "$WORK/fbvenv" >/dev/null 2>&1 || fail "could not create a venv"
+    "$WORK/fbvenv/bin/pip" install --quiet --no-index "$fallback" || fail "pip install of the fallback failed"
+    if "$WORK/fbvenv/bin/agentstow" >"$WORK/fb.out" 2>&1; then
+      fail "the fallback exited 0; it must fail and explain itself"
+    fi
+    grep -q 'no prebuilt binary' "$WORK/fb.out" || fail "the fallback does not name the problem"
+    grep -q 'cargo install agentstow' "$WORK/fb.out" || fail "the fallback gives no way forward"
+    echo "  $(basename "$fallback"): explains itself and exits non-zero"
   else
     cat "$WORK/wheels.log" >&2
     fail "build-wheels.py failed"

@@ -24,6 +24,7 @@ import hashlib
 import os
 import re
 import stat
+import subprocess
 import sys
 import zipfile
 
@@ -139,6 +140,24 @@ def build(target, version, outdir):
     distinfo = f"agentstow-{version}.dist-info"
     scripts = f"agentstow-{version}.data/scripts"
 
+    # A stale target/release/ is the one way this script can label a wheel with
+    # a version its binary does not carry, and the manual-upload path in the
+    # runbook would then put that on PyPI, where it can be yanked but never
+    # replaced. Only the host's own binary can be run to check, which is
+    # exactly the case the manual path uses.
+    if target == host_target():
+        try:
+            reported = subprocess.run(
+                [binary, "--version"], capture_output=True, text=True, timeout=30
+            ).stdout.strip()
+        except (OSError, subprocess.SubprocessError):
+            reported = ""
+        if reported and reported != f"agentstow {version}":
+            sys.exit(
+                f"{binary} reports {reported!r}, but Cargo.toml says {version} — "
+                "rebuild with `cargo build --release` before packaging"
+            )
+
     with open(binary, "rb") as fh:
         binary_bytes = fh.read()
 
@@ -164,7 +183,11 @@ def build(target, version, outdir):
     files.append((f"{distinfo}/RECORD", ("\n".join(record) + "\n").encode("utf-8"), False))
 
     name = f"agentstow-{version}-py3-none-{platform_tag}.whl"
-    path = os.path.join(outdir, name)
+    write_wheel(os.path.join(outdir, name), files)
+    return name
+
+
+def write_wheel(path, files):
     with zipfile.ZipFile(path, "w", zipfile.ZIP_DEFLATED) as zf:
         for entry, data, executable in files:
             # A fixed timestamp keeps the wheel byte-identical across rebuilds
@@ -178,6 +201,77 @@ def build(target, version, outdir):
             mode = stat.S_IFREG | (0o755 if executable else 0o644)
             info.external_attr = mode << 16
             zf.writestr(info, data)
+
+
+FALLBACK_MODULE = '''\
+"""Stand-in for platforms with no prebuilt agentstow binary.
+
+Ships only in the py3-none-any wheel. pip prefers a platform wheel whenever
+one matches, so this is reached only where none does.
+"""
+
+import platform
+import sys
+
+SUPPORTED = (
+    "macOS arm64 and x86_64, Linux aarch64 and x86_64 (manylinux 2.17+), "
+    "and Windows x64 and arm64"
+)
+
+
+def main():
+    sys.stderr.write(
+        f"agentstow: no prebuilt binary for {sys.platform}-{platform.machine()}.\\n"
+        "This is the fallback wheel — pip installs it only when no platform "
+        "wheel matches your machine.\\n"
+        f"Prebuilt wheels exist for {SUPPORTED}.\\n"
+        "To build from source instead: cargo install agentstow\\n"
+    )
+    return 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())
+'''
+
+
+def build_fallback(version, outdir):
+    """The py3-none-any wheel: no binary, just a command that explains itself.
+
+    Without it, `pip install agentstow` on an unsupported platform fails with
+    pip's generic "no matching distribution found", which names neither the
+    platform nor a way forward. The npm launcher already behaves the way this
+    does — install succeeds, running it says what it looked for and points at
+    `cargo install` — so this keeps the two channels honest with each other.
+    A platform tag always outranks `any` in pip's preference order, so this
+    can never shadow a real wheel.
+    """
+    distinfo = f"agentstow-{version}.dist-info"
+    files = [
+        ("agentstow_unsupported.py", FALLBACK_MODULE.encode("utf-8"), False),
+        (f"{distinfo}/METADATA", metadata(version).encode("utf-8"), False),
+        (
+            f"{distinfo}/WHEEL",
+            (
+                "Wheel-Version: 1.0\n"
+                "Generator: agentstow build-wheels.py\n"
+                "Root-Is-Purelib: true\n"
+                "Tag: py3-none-any\n"
+            ).encode("utf-8"),
+            False,
+        ),
+        (
+            f"{distinfo}/entry_points.txt",
+            b"[console_scripts]\nagentstow = agentstow_unsupported:main\n",
+            False,
+        ),
+    ]
+    record = [record_line(name, data) for name, data, _ in files]
+    record.append(f"{distinfo}/RECORD,,")
+    files.append((f"{distinfo}/RECORD", ("\n".join(record) + "\n").encode("utf-8"), False))
+
+    name = f"agentstow-{version}-py3-none-any.whl"
+    write_wheel(os.path.join(outdir, name), files)
     return name
 
 
@@ -202,6 +296,12 @@ def main():
             print(f"  {target}: {name}")
     if not built:
         sys.exit("no wheels built — is anything in target/<triple>/release?")
+
+    # Always emitted: it needs no binary, and a release that shipped platform
+    # wheels without it would regress unsupported platforms back to pip's
+    # bare "no matching distribution found".
+    built.append(build_fallback(version, outdir))
+    print(f"  fallback: {built[-1]}")
     print(f"{len(built)} wheel(s) in {outdir}")
 
 

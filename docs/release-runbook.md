@@ -16,12 +16,21 @@ CI fails with an auth error until this exists.
 - **crates.io** — <https://crates.io/crates/agentstow/settings> → *Trusted
   Publishing* → *Add*: repository owner `agentstow`, repository name
   `agentstow`, workflow filename `release.yml`, environment left blank.
-- **PyPI** — <https://pypi.org/manage/account/publishing/> → *Add a new pending
-  publisher*: PyPI project name `agentstow`, owner `agentstow`, repository name
-  `agentstow`, workflow name `release.yml`, environment left blank. Register it
-  as a **pending** publisher *before* the first release: PyPI creates the
-  project on the first successful OIDC upload, so unlike npm and crates.io
-  there is no manual bootstrap publish and no token ever exists.
+- **PyPI** — now that the project exists, the entry lives at
+  <https://pypi.org/manage/project/agentstow/settings/publishing/>: owner
+  `agentstow`, repository name `agentstow`, workflow name `release.yml`,
+  environment **`pypi`**. Before the first release it was instead registered as
+  a *pending* publisher from <https://pypi.org/manage/account/publishing/>;
+  PyPI creates the project on the first successful OIDC upload, so unlike npm
+  and crates.io there was no manual bootstrap publish and no token ever
+  existed.
+
+  Unlike the other two registries this one names an environment, because PyPI
+  recommends it and this entry was the newest. Three things must agree or the
+  publish fails at token exchange: the `environment: pypi` key on the
+  `publish-pypi` job, a GitHub environment named `pypi`, and this field. The
+  environment additionally carries a `v*` **tag** deployment policy, so a run
+  on a branch cannot reach it even though it sits in the same workflow file.
 - **npm** — for **each package** (`agentstow`, `@agentstow/darwin-arm64`,
   `@agentstow/darwin-x64`, `@agentstow/linux-arm64`, `@agentstow/linux-x64`,
   `@agentstow/win32-arm64`, `@agentstow/win32-x64`): package page → *Settings*
@@ -137,7 +146,14 @@ no Python code in the wheels — each carries the same binary the tarball and th
 npm package ship, in `agentstow-<version>.data/scripts/`, which pip installs
 straight onto PATH.
 
-Two things are easy to get wrong and are guarded in CI:
+A seventh wheel, `py3-none-any`, carries no binary at all — just a console
+script that names the platform and points at `cargo install`. pip always ranks a
+platform tag above `any`, so it is reached only where nothing else matches;
+without it, an unsupported platform gets pip's bare *no matching distribution
+found*, which names neither the cause nor a way forward. This mirrors the npm
+launcher, which also installs cleanly and explains itself when run.
+
+Three things are easy to get wrong and are guarded in CI:
 
 - **The platform tag.** It is written by hand per target; get it wrong and pip
   reports *no matching distribution* rather than anything pointing at the cause.
@@ -149,6 +165,11 @@ Two things are easy to get wrong and are guarded in CI:
   PATH that cannot run, and one that `--version` in the build never catches
   because the build never installs. The `wheels` job asserts `test -x` after a
   real `pip install` for exactly this reason.
+- **Which wheel a check installs.** `py3-none-any` sorts first, so a naive
+  `ls | head -1` tests the fallback and reports the binary as broken. Both CI
+  and `verify-packaging.sh` name the platform wheel explicitly, assert pip
+  prefers it when both are offered, and assert the fallback exits non-zero
+  with a message.
 
 **Manual fallback.** With the binaries staged under `target/<triple>/release/`:
 
@@ -159,7 +180,10 @@ python -m twine upload wheelhouse/*.whl
 
 A locally built wheel only ever contains the host's own binary — the script
 refuses to seal a host binary into another platform's wheel, since a wheel on
-PyPI can be yanked but never replaced.
+PyPI can be yanked but never replaced. For the same reason it runs the host
+binary's `--version` and refuses to package when it disagrees with
+`Cargo.toml`, which is what a stale `target/release/` from before a version
+bump would otherwise produce.
 
 ## The Homebrew tap
 

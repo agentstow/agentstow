@@ -64,7 +64,7 @@ jobs:
             bin: agentstow.exe
             run_check: false
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       - name: install the rust toolchain
         run: |
           # Cargo.toml declares edition 2024 and rust-version 1.97, so a stale
@@ -78,7 +78,7 @@ jobs:
       - name: the binary runs
         if: ${{ matrix.run_check }}
         run: ./target/${{ matrix.triple }}/release/${{ matrix.bin }} --version
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: binary-${{ matrix.target }}
           path: target/${{ matrix.triple }}/release/${{ matrix.bin }}
@@ -89,11 +89,11 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           path: artifacts
       - name: put each binary where the assembler expects it
@@ -140,7 +140,7 @@ jobs:
           ./node_modules/.bin/agentstow --version
       - name: dry-run publish
         run: for dir in dist/*; do (cd "$dir" && npm publish --dry-run); done
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: npm-packages
           path: dist
@@ -149,7 +149,7 @@ jobs:
     name: cargo package
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       - run: |
           rustup toolchain install stable --profile minimal
           rustup default stable
@@ -161,11 +161,11 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           path: artifacts
       - name: put each binary where the assembler expects it
@@ -188,13 +188,25 @@ jobs:
           done
       - name: assemble the wheels
         run: scripts/build-wheels.py wheelhouse
-      - name: all six wheels are present
+      - name: six platform wheels, plus the fallback
         run: |
           set -euo pipefail
           count="$(ls wheelhouse/*.whl | wc -l)"
-          if [ "$count" -ne 6 ]; then
-            echo "expected 6 wheels, built $count"; ls wheelhouse; exit 1
+          if [ "$count" -ne 7 ]; then
+            echo "expected 7 wheels, built $count"; ls wheelhouse; exit 1
           fi
+          # Its absence is silent: supported platforms keep working and only
+          # unsupported ones regress, so assert it rather than eyeball the list.
+          test -f wheelhouse/agentstow-*-py3-none-any.whl
+      - name: the fallback explains itself rather than crashing
+        run: |
+          set -euo pipefail
+          python -m venv /tmp/fallbacktest
+          /tmp/fallbacktest/bin/pip install --no-index wheelhouse/agentstow-*-py3-none-any.whl
+          out="$(/tmp/fallbacktest/bin/agentstow 2>&1 || true)"
+          echo "$out"
+          echo "$out" | grep -q 'no prebuilt binary' || { echo "fallback message missing"; exit 1; }
+          echo "$out" | grep -q 'cargo install agentstow' || { echo "no way forward given"; exit 1; }
       - name: the linux wheel installs and runs
         # This runner is linux-x64, so the manylinux wheel is the one target
         # whose install can actually be exercised here. It is also the check
@@ -209,7 +221,7 @@ jobs:
         run: |
           python -m pip install --quiet twine
           python -m twine check wheelhouse/*.whl
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: wheels
           path: wheelhouse
@@ -222,7 +234,7 @@ jobs:
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       - run: |
           version="$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -1)"
           if [ "v$version" != "$GITHUB_REF_NAME" ]; then
@@ -242,8 +254,8 @@ jobs:
     permissions:
       contents: write # create the release and upload to it; the repo default is read
     steps:
-      - uses: actions/checkout@v5
-      - uses: actions/download-artifact@v4
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v8
         with:
           path: artifacts
       - name: one archive per target, plus the checksums
@@ -286,7 +298,7 @@ jobs:
     permissions:
       contents: write # commits the regenerated formula back to main
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
         with:
           # The tap serves whatever is on main; the tag is a detached commit.
           ref: main
@@ -321,7 +333,7 @@ jobs:
       id-token: write # OIDC exchange with crates.io — see the runbook
       contents: read
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       - run: |
           rustup toolchain install stable --profile minimal
           rustup default stable
@@ -352,7 +364,7 @@ jobs:
       contents: read
       actions: read
     steps:
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 24
       - name: npm is new enough for trusted publishing
@@ -362,7 +374,7 @@ jobs:
           v="$(npm --version)"
           printf '%s\n11.5.1\n' "$v" | sort -V | head -1 | grep -qx '11.5.1' \
             || { echo "npm $v is older than 11.5.1"; exit 1; }
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: npm-packages
           path: dist
@@ -404,11 +416,17 @@ jobs:
     if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
     needs: [package, crate, guard, wheels]
     runs-on: ubuntu-latest
+    # PyPI binds its trust entry to this environment name, and the environment
+    # itself only accepts v* tags — so a workflow run on a branch cannot mint a
+    # PyPI credential even though it lives in the same file. crates.io and npm
+    # leave the environment blank; PyPI is the one registry that recommends it,
+    # and it is the newest trust entry, so it starts tight.
+    environment: pypi
     permissions:
       id-token: write # OIDC exchange with PyPI — see the runbook
       contents: read
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: wheels
           path: dist

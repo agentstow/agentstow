@@ -104,7 +104,11 @@ brew install agentstow</pre>
       compiled binary in the wheel's <code>scripts/</code> directory, which is how
       <code>pip install</code> and <code>uvx</code> put a working <code>agentstow</code> on
       PATH with no interpreter shim in between. There is one wheel per platform, so pip
-      resolves the right binary the same way npm picks the right optional dependency.</p>
+      resolves the right binary the same way npm picks the right optional dependency.
+      On a platform with no prebuilt wheel you still get a clean install and a command
+      that names your platform and points at <code>cargo install</code>, rather than
+      pip's bare <em>no matching distribution found</em> — the same courtesy the npm
+      launcher extends.</p>
       <p>The Homebrew tap lives in the agentstow repository itself rather than a separate
       <code>homebrew-agentstow</code> one, which is why it is tapped by URL rather than by
       the short <code>brew tap agentstow/agentstow</code> form. It installs the same

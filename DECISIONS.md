@@ -1173,3 +1173,51 @@ would be a decoy for the next person. The channel is documented in the runbook
 instead. Trusted publishing reuses `release.yml` and leaves the environment
 blank, matching the crates.io and npm entries rather than introducing this
 repo's first GitHub environment for one registry.
+
+## 2026-08-16 — A fallback wheel, a tag-locked PyPI environment, and current actions
+
+Three follow-ups to the PyPI channel, taken together because the first two both
+touch the wheel pipeline.
+
+**A seventh `py3-none-any` wheel.** `pip install agentstow` on an unsupported
+platform failed with pip's generic *no matching distribution found* — no
+platform named, no way forward — while the npm launcher for the same case names
+what it looked for and points at `cargo install`. Two channels, two standards.
+Fixed by shipping a binary-less wheel whose console script prints exactly that
+and exits 1. pip ranks any platform tag above `any`, so it can never shadow a
+real wheel; that ordering is now asserted rather than assumed, by resolving from
+a wheelhouse holding both and checking the binary answers. Rejected the
+alternative of an sdist: it would need Rust to build, which is the opposite of
+what the wheels are for, and it fails at install time rather than explaining
+itself at run time.
+
+**PyPI's environment is now `pypi`, locked to `v*` tags.** The first entry left
+it blank to match crates.io and npm, which was defensible but left the trust
+entry accepting any run of `release.yml`. PyPI is the one registry that
+recommends an environment, and this was the newest entry, so it starts tight
+instead. Three things must now agree — the `environment: pypi` key on the job, a
+GitHub environment of that name, and the field on PyPI — and the environment
+carries a `v*` tag deployment policy, so a branch run cannot reach it even
+though it lives in the same workflow file. Sequenced deliberately: the workflow
+key and the environment first, while PyPI still accepted `(Any)`, so no step in
+the middle could break publishing.
+
+**Actions moved to current majors** (checkout 5→7, download-artifact 4→8,
+setup-node 4→7, setup-python 5→7, upload-artifact 4→7). Every run had been
+annotating that `upload-artifact@v4` targets the deprecated Node 20, which
+trains a maintainer to ignore annotations. Read the major release notes first
+rather than bumping blind: the breaking changes are all opt-in parameters
+(`archive`, `skip-decompress`, `digest-mismatch`), and default behaviour for
+this repo's usage — named upload, download-all-into-a-path — is unchanged.
+Validated with a `workflow_dispatch` at main before tagging, which exercises
+build, package and wheels while every publish job stays gated off.
+
+Two defects were caught by the repo's own checks rather than in review, which is
+the argument for having them. `verify-packaging.sh` picked its wheel with
+`ls | head -1`; `py3-none-any` sorts first, so it installed the fallback and
+correctly reported that the binary does not run. And packaging silently accepted
+a stale `target/release/` from before a version bump, labelling a wheel 2.0.3
+around a 2.0.2 binary — harmless in CI, which always builds fresh, but the
+runbook's manual-upload path would have put it on PyPI, where a file can be
+yanked and never replaced. `build-wheels.py` now runs the host binary's
+`--version` and refuses to package on disagreement.
