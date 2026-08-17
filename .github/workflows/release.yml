@@ -156,7 +156,10 @@ jobs:
 
   guard:
     name: tag matches the crate version
-    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    # Any run sitting on a v* tag, pushed or dispatched — the registry publish
+    # jobs below stay push-only, but the binary and formula jobs can be
+    # replayed at a tag without moving it.
+    if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
@@ -166,6 +169,88 @@ jobs:
             echo "tag $GITHUB_REF_NAME does not match Cargo.toml version $version"
             exit 1
           fi
+
+  release:
+    name: attach the binaries to the GitHub Release
+    # The six cross-builds used to reach users only through npm, which made npm
+    # a single point of failure for everyone not building from source. They are
+    # already built by the time this runs; attaching them costs one job and is
+    # what the Homebrew tap installs from.
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [build, guard]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # create the release and upload to it; the repo default is read
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+      - name: one archive per target, plus the checksums
+        run: |
+          set -euo pipefail
+          version="${GITHUB_REF_NAME#v}"
+          mkdir -p dist stage
+          # tar for the unix targets — the archive holds the bare binary, which
+          # is what the formula's `bin.install "agentstow"` expects.
+          for target in darwin-arm64 darwin-x64 linux-arm64 linux-x64; do
+            install -m 755 "artifacts/binary-$target/agentstow" stage/agentstow
+            tar -C stage -czf "dist/agentstow-$version-$target.tar.gz" agentstow
+            rm -f stage/agentstow
+          done
+          for target in win32-x64 win32-arm64; do
+            install -m 755 "artifacts/binary-$target/agentstow.exe" stage/agentstow.exe
+            (cd stage && zip -q "$GITHUB_WORKSPACE/dist/agentstow-$version-$target.zip" agentstow.exe)
+            rm -f stage/agentstow.exe
+          done
+          # Named glob, not `*`: SHA256SUMS.txt must not checksum itself.
+          (cd dist && sha256sum agentstow-* > SHA256SUMS.txt)
+          cat dist/SHA256SUMS.txt
+      - name: create the release, or replace the assets on a re-run
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            gh release upload "$GITHUB_REF_NAME" dist/* --clobber
+          else
+            gh release create "$GITHUB_REF_NAME" dist/* \
+              --title "$GITHUB_REF_NAME" --generate-notes
+          fi
+
+  tap:
+    name: point the Homebrew formula at this release
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [release]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # commits the regenerated formula back to main
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          # The tap serves whatever is on main; the tag is a detached commit.
+          ref: main
+          # This job commits and rebases, and the default shallow clone makes
+          # `git pull --rebase` unreliable against a main that moved.
+          fetch-depth: 0
+      - name: regenerate the formula from the published checksums
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: scripts/update-formula.sh "$GITHUB_REF_NAME"
+      - name: commit, unless nothing moved
+        run: |
+          set -euo pipefail
+          if git diff --quiet -- Formula/agentstow.rb; then
+            echo "the formula already points at $GITHUB_REF_NAME"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add Formula/agentstow.rb
+          git commit -m "Homebrew formula: $GITHUB_REF_NAME"
+          # A human may have pushed to main while the release was building.
+          git pull --rebase origin main
+          git push origin main
 
   publish-crate:
     name: publish to crates.io

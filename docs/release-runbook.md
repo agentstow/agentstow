@@ -93,10 +93,15 @@ npm packages stay in lockstep by construction — a release is a one-line bump.
    passed* and no blocked packages.
 3. Commit, tag `vX.Y.Z`, push the tag. The tag must match `Cargo.toml` — a
    `guard` job fails the run otherwise. The `release` workflow cross-builds
-   all four targets, assembles the packages, installs them offline, dry-run
-   publishes, then publishes the crate and all five npm packages. Publish
-   jobs run only on the tag push — never for `workflow_dispatch` or pull
-   requests.
+   all six targets, assembles the packages, installs them offline, dry-run
+   publishes, then publishes the crate and all seven npm packages, attaches
+   the six binaries to the GitHub Release, and commits the regenerated
+   Homebrew formula to main. The registry publish jobs run only on the tag
+   push — never for `workflow_dispatch` or pull requests. The `release` and
+   `tap` jobs are gated on the ref instead, so both also run for a
+   `workflow_dispatch` made **at a v\* tag**: the binaries and the formula can
+   be rebuilt without moving the tag, and re-runs overwrite the assets rather
+   than failing.
 4. Verify as described below once the workflow is green.
 
 ## Manual fallback
@@ -117,6 +122,49 @@ If CI publishing is unavailable, publish by hand from the workflow's
    resolves nothing and the binary is missing.
    `--access public` is required: scoped packages default to restricted.
    CI publishes in this same order.
+
+## The Homebrew tap
+
+The tap is this repository. There is no separate `homebrew-agentstow` repo, so
+users tap it by URL — the short `brew tap agentstow/agentstow` form would look
+for `agentstow/homebrew-agentstow` and 404:
+
+```sh
+brew tap agentstow/tap https://github.com/agentstow/agentstow
+brew trust agentstow/tap      # Homebrew 6 will not load an untrusted third-party tap
+brew install agentstow
+```
+
+`Formula/agentstow.rb` is **generated — never hand-edit it.** The `tap` job runs
+`scripts/update-formula.sh <tag>`, which reads the `SHA256SUMS.txt` already
+published on that release and rewrites the file whole, then commits it to main.
+Two consequences worth knowing:
+
+- The formula can only ever describe assets that exist; the script exits
+  non-zero rather than emitting a formula with a missing or malformed sha256.
+- It regenerates rather than patches, so there is no half-updated state where
+  the version moved and a sha256 did not.
+
+It carries no `version` stanza on purpose — Homebrew scans the version out of
+the asset URL, and `brew audit` rejects the redundant stanza.
+
+**Manual fallback.** If the `tap` job fails but the release assets are up:
+
+```sh
+scripts/update-formula.sh vX.Y.Z
+git add Formula/agentstow.rb && git commit -m "Homebrew formula: vX.Y.Z" && git push
+```
+
+**Verifying the tap** (`brew fetch` proves the URL and checksum without
+installing anything):
+
+```sh
+brew tap agentstow/tap https://github.com/agentstow/agentstow
+brew trust agentstow/tap
+brew info agentstow          # should report the version just released
+brew audit agentstow/tap/agentstow
+brew fetch agentstow
+```
 
 ## Verifying
 

@@ -30,6 +30,16 @@ There is no state file. There never will be. The filesystem is the state.
 ```sh
 npm install -g agentstow      # prebuilt binary, macOS, Linux and Windows, no toolchain
 cargo install agentstow       # from source, needs Rust 1.97+
+npx agentstow doctor          # or try it first, without installing anything
+```
+
+On macOS and Linux there is also a Homebrew tap. It lives in this repository rather
+than a separate `homebrew-agentstow` one, so it is tapped by URL:
+
+```sh
+brew tap agentstow/tap https://github.com/agentstow/agentstow
+brew trust agentstow/tap      # Homebrew 6 refuses to load untrusted third-party taps
+brew install agentstow
 ```
 
 ## Use

@@ -287,6 +287,14 @@ npm install -g agentstow
 <span class="c"># or from source, needs Rust 1.97+</span>
 cargo install agentstow
 
+<span class="c"># or try it first, without installing anything</span>
+npx agentstow doctor
+
+<span class="c"># or on macOS and Linux, from the tap in the repo itself</span>
+brew tap agentstow/tap https://github.com/agentstow/agentstow
+brew trust agentstow/tap
+brew install agentstow
+
 <span class="c"># then, on a machine you have already been using</span>
 agentstow init</pre>
       <p><code>init</code> creates the Commons and then tells you what of your existing

@@ -251,6 +251,14 @@ npm install -g agentstow
 <span class="c"># 或从源码构建，需要 Rust 1.97+</span>
 cargo install agentstow
 
+<span class="c"># 或者先试用，无需安装</span>
+npx agentstow doctor
+
+<span class="c"># 或在 macOS 与 Linux 上，从本仓库自带的 tap 安装</span>
+brew tap agentstow/tap https://github.com/agentstow/agentstow
+brew trust agentstow/tap
+brew install agentstow
+
 <span class="c"># 然后，在一台你已经用了一段时间的机器上</span>
 agentstow init</pre>
       <p><code>init</code> 先创建 Commons，然后告诉你现有配置里有哪些可以接管——按配置族列出，并附上对应的命令。</p>
